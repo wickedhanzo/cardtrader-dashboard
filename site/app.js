@@ -5,7 +5,14 @@
   const money = new Intl.NumberFormat(undefined, { style: "currency", currency: "EUR" });
   const dates = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
   const shortDate = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+  const percentages = new Intl.NumberFormat(undefined, { style: "percent", minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "exceptZero" });
+  const compactPercentages = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1, signDisplay: "exceptZero" });
   const preferencesKey = "cardtrader.repository.v1";
+  const connectionStore = D.createConnectionStore({
+    getItem: key => localStorage.getItem(key),
+    setItem: (key, value) => localStorage.setItem(key, value),
+    removeItem: key => localStorage.removeItem(key)
+  }, new URL(".", window.location.href).pathname);
   const state = {
     client: null, prices: null, settings: D.emptySettings(), selected: null, visible: [],
     filters: { search: "", expansion: "", ownership: "all", watched: false, sort: "name" },
@@ -17,8 +24,11 @@
   const formatMoney = amount => money.format(amount / 100);
   const formatDate = at => at ? dates.format(new Date(at)) : "Never";
   const targetText = amount => amount === null ? "" : (amount / 100).toFixed(2);
-  const canEdit = () => Boolean(state.client?.canEdit) && !state.loading && !state.busy;
+  const canEdit = () => Boolean(state.client?.canEdit) && !state.loading && !state.busy && !state.connecting;
   const hasDrafts = () => state.drafts.size > 0;
+  const fullPercent = drop => drop?.percent != null ? percentages.format(-drop.percent / 100) : "\u2014";
+  const displayPercent = drop => drop?.percent != null && Math.abs(drop.percent) >= 10000
+    ? `${compactPercentages.format(-drop.percent)}%` : fullPercent(drop);
 
   function icon(name) {
     const element = document.createElement("img");
@@ -43,17 +53,17 @@
   }
 
   function updateControls() {
-    $("refresh-button").disabled = !state.client || state.loading || state.busy;
+    $("refresh-button").disabled = !state.client || state.loading || state.busy || state.connecting;
     $("export-button").disabled = !state.prices || state.loading || state.busy;
-    $("connect-button").disabled = state.loading || state.busy;
+    $("connect-button").disabled = state.loading || state.busy || state.connecting;
     $("disconnect-button").hidden = !state.client;
     $("connect-label").textContent = state.client ? "Repository" : "Connect repository";
     $("access-badge").hidden = !state.client;
     $("access-badge").textContent = state.client?.canEdit ? "Editable" : "Read only";
     $("connection-dot").classList.toggle("connected", Boolean(state.client));
     $("refresh-icon").classList.toggle("spinning", state.loading);
-    $("collection").setAttribute("aria-busy", String(state.loading));
-    $("sync-status").textContent = state.busy ? "Saving settings..." : state.loading ? "Refreshing..." :
+    $("collection").setAttribute("aria-busy", String(state.loading || state.connecting));
+    $("sync-status").textContent = state.busy ? "Saving settings..." : state.connecting ? "Connecting..." : state.loading ? "Refreshing..." :
       hasDrafts() ? `${state.drafts.size} unsaved watch ${state.drafts.size === 1 ? "price" : "prices"}` :
         state.client ? "Settings synced" : "Disconnected";
   }
@@ -91,7 +101,7 @@
     $("empty-description").textContent = !connected ? "No repository connected." : noData ?
       "Waiting for the worker's first card snapshot." : "No cards match the current search and filters.";
     $("empty-action").replaceChildren(icon(!connected ? "github" : noData ? "refresh-cw" : "x"), document.createTextNode(!connected ? "Connect repository" : noData ? "Refresh" : "Clear filters"));
-    $("empty-action").disabled = state.loading || state.busy;
+    $("empty-action").disabled = state.loading || state.busy || state.connecting;
   }
 
   function renderTable() {
@@ -129,9 +139,20 @@
       price.textContent = card.available ? formatMoney(card.currentPriceCents) : "Unavailable";
       if (!card.available) price.title = `Last seen ${formatDate(card.lastSeenAt)} at ${formatMoney(card.currentPriceCents)}`;
       const drop = D.change24h(card, state.prices.lastCheckedAt);
+      const mobilePercent = document.createElement("span");
+      mobilePercent.className = "mobile-drop-percent " + (drop?.percent == null || drop.percent === 0 ? "muted" : drop.percent > 0 ? "positive" : "negative");
+      mobilePercent.textContent = displayPercent(drop);
+      mobilePercent.title = `24-hour change: ${fullPercent(drop)}`;
+      mobilePercent.setAttribute("aria-label", mobilePercent.title);
+      price.append(mobilePercent);
       const dropCell = document.createElement("td");
       dropCell.className = "numeric change-column " + (!drop || drop.dropCents === 0 ? "muted" : drop.dropCents > 0 ? "positive" : "negative");
       dropCell.textContent = drop ? `${drop.dropCents > 0 ? "-" : drop.dropCents < 0 ? "+" : ""}${formatMoney(Math.abs(drop.dropCents))}` : "\u2014";
+      const percentage = document.createElement("span");
+      percentage.className = "drop-percent" + (drop?.percent == null ? " muted" : "");
+      percentage.textContent = displayPercent(drop);
+      percentage.title = fullPercent(drop);
+      dropCell.append(percentage);
       dropCell.title = drop ? `Compared with ${formatMoney(drop.baselineCents)} at least 24 hours before last seen` : "No 24-hour baseline available";
       const watch = document.createElement("td");
       watch.className = "numeric watch-target";
@@ -269,6 +290,8 @@
     $("detail-price").className = card.available ? "" : "unavailable";
     $("detail-drop").textContent = drop ? `${drop.dropCents > 0 ? "-" : drop.dropCents < 0 ? "+" : ""}${formatMoney(Math.abs(drop.dropCents))}` : "\u2014";
     $("detail-drop").className = !drop || drop.dropCents === 0 ? "muted" : drop.dropCents > 0 ? "positive" : "negative";
+    $("detail-drop-percent").textContent = fullPercent(drop);
+    $("detail-drop-percent").className = "detail-drop-percent " + (drop?.percent == null || drop.percent === 0 ? "muted" : drop.percent > 0 ? "positive" : "negative");
     $("detail-drop").title = drop ? "Compared with a point at least 24 hours before last seen" : "No 24-hour baseline available";
     $("detail-acquired").checked = saved.acquired;
     $("detail-acquired").disabled = !canEdit();
@@ -300,7 +323,7 @@
   }
 
   async function refresh() {
-    if (!state.client || state.loading || state.busy || !discardDrafts("refresh")) return;
+    if (!state.client || state.loading || state.busy || state.connecting || !discardDrafts("refresh")) return;
     const client = state.client, session = state.session;
     state.loading = true;
     render();
@@ -334,13 +357,18 @@
   }
 
   function openConnect() {
-    if (state.busy || state.loading) return;
+    if (state.busy || state.loading || state.connecting) return;
+    const remembered = connectionStore.read();
     let prefs = {};
     try { prefs = JSON.parse(localStorage.getItem(preferencesKey) || "{}"); } catch (_) { /* Preferences are optional. */ }
-    $("repo-owner").value = state.client?.config.owner || (typeof prefs?.owner === "string" ? prefs.owner : "");
-    $("repo-name").value = state.client?.config.repo || (typeof prefs?.repo === "string" ? prefs.repo : "");
-    $("repo-branch").value = state.client?.config.branch || (typeof prefs?.branch === "string" ? prefs.branch : D.DEFAULT_BRANCH);
+    $("repo-owner").value = state.client?.config.owner || remembered?.config.owner || (typeof prefs?.owner === "string" ? prefs.owner : "");
+    $("repo-name").value = state.client?.config.repo || remembered?.config.repo || (typeof prefs?.repo === "string" ? prefs.repo : "");
+    $("repo-branch").value = state.client?.config.branch || remembered?.config.branch || (typeof prefs?.branch === "string" ? prefs.branch : D.DEFAULT_BRANCH);
     $("repo-token").value = "";
+    $("remember-connection").checked = Boolean(remembered);
+    const shownConfig = { owner: $("repo-owner").value, repo: $("repo-name").value, branch: $("repo-branch").value };
+    if (remembered && Object.keys(shownConfig).every(key => remembered.config[key] === shownConfig[key]))
+      $("repo-token").value = remembered.token;
     $("connection-error").hidden = true;
     $("connect-dialog").showModal();
   }
@@ -348,7 +376,7 @@
   function connectBusy(value) {
     state.connecting = value;
     $("submit-connect").disabled = value;
-    ["repo-owner", "repo-name", "repo-branch", "repo-token"].forEach(id => { $(id).disabled = value; });
+    ["repo-owner", "repo-name", "repo-branch", "repo-token", "remember-connection"].forEach(id => { $(id).disabled = value; });
     $("submit-connect").lastElementChild.textContent = value ? "Connecting..." : "Connect";
   }
 
@@ -358,18 +386,21 @@
     $("repo-token").value = "";
     connectBusy(false);
     $("connect-dialog").close();
+    render();
   }
 
-  $("connect-form").addEventListener("submit", async event => {
-    event.preventDefault();
-    if (state.connecting || !discardDrafts("connect")) return;
+  async function connectRepository(input, token, remember, automatic = false) {
+    if (state.connecting) return;
     let candidate;
     try {
-      const config = D.validateConnection({ owner: $("repo-owner").value, repo: $("repo-name").value, branch: $("repo-branch").value });
-      candidate = D.createClient(config, $("repo-token").value);
+      const config = D.validateConnection(input);
+      token = token.trim();
+      candidate = D.createClient(config, token);
       $("repo-token").value = "";
       state.pendingClient = candidate;
       connectBusy(true);
+      if (automatic) notice("Reconnecting to your repository...", "loading");
+      render();
       $("connection-error").hidden = true;
       const snapshot = await candidate.load();
       if (state.pendingClient !== candidate) return;
@@ -379,20 +410,34 @@
       state.selected = null;
       state.pendingClient = null;
       try { localStorage.setItem(preferencesKey, JSON.stringify(config)); } catch (_) { /* Storage may be disabled. */ }
+      const stored = remember ? connectionStore.save(config, token) : connectionStore.clear();
       showSnapshot(snapshot);
-      notice(snapshot.prices.lastCheckedAt ? "" : "Partial snapshot. No complete worker check has finished yet.");
+      notice(!stored ? "Connected, but browser storage could not be updated. Your connection may not be remembered or forgotten." :
+        snapshot.prices.lastCheckedAt ? "" : "Partial snapshot. No complete worker check has finished yet.", !stored ? "error" : undefined);
       $("connect-dialog").close();
     } catch (error) {
       candidate?.disconnect();
       if (candidate && state.pendingClient !== candidate) return;
-      $("connection-error").textContent = error.message;
+      if (automatic && error.status === 401) connectionStore.clear();
+      const message = automatic && error.status === 401 ? "Your saved token was rejected. Connect again with a valid token." : error.message;
+      $("connection-error").textContent = message;
       $("connection-error").hidden = false;
+      if (automatic) notice(message, "error");
     } finally {
+      token = "";
       if (!candidate || state.pendingClient === candidate || state.client === candidate) {
         state.pendingClient = null;
         connectBusy(false);
+        render();
       }
     }
+  }
+
+  $("connect-form").addEventListener("submit", event => {
+    event.preventDefault();
+    if (state.connecting || !discardDrafts("connect")) return;
+    connectRepository({ owner: $("repo-owner").value, repo: $("repo-name").value, branch: $("repo-branch").value },
+      $("repo-token").value, $("remember-connection").checked);
   });
 
   $("connect-dialog").addEventListener("cancel", event => { event.preventDefault(); closeConnect(); });
@@ -411,10 +456,12 @@
     state.busy = false;
     state.loading = false;
     $("repo-token").value = "";
+    $("remember-connection").checked = false;
+    const forgotten = connectionStore.clear();
     $("repository-label").textContent = "No repository connected";
     $("last-checked").textContent = "Not checked";
     renderExpansions();
-    notice("");
+    notice(forgotten ? "" : "Disconnected, but this browser could not remove the saved connection. Clear site data to forget it.", forgotten ? undefined : "error");
     render();
   });
   $("search").addEventListener("input", event => { state.filters.search = event.target.value; renderTable(); renderDetail(); });
@@ -477,4 +524,6 @@
   if (typeof ResizeObserver !== "undefined") new ResizeObserver(drawChart).observe($("history-chart"));
   else window.addEventListener("resize", drawChart);
   render();
+  const remembered = connectionStore.read();
+  if (remembered) connectRepository(remembered.config, remembered.token, true, true);
 })();

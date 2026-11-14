@@ -77,11 +77,13 @@
       if (filters.sort === "price" || filters.sort === "price-desc") {
         if (a.available !== b.available) return a.available ? -1 : 1;
         comparison = (a.currentPriceCents - b.currentPriceCents) * (filters.sort === "price-desc" ? -1 : 1);
-      } else if (filters.sort === "drop") {
+      } else if (filters.sort === "drop" || filters.sort === "drop-percent") {
         const left = change24h(a, prices.lastCheckedAt);
         const right = change24h(b, prices.lastCheckedAt);
-        if (Boolean(left) !== Boolean(right)) return left ? -1 : 1;
-        comparison = (right?.dropCents ?? 0) - (left?.dropCents ?? 0);
+        const leftValue = filters.sort === "drop-percent" ? left?.percent : left?.dropCents;
+        const rightValue = filters.sort === "drop-percent" ? right?.percent : right?.dropCents;
+        if ((leftValue != null) !== (rightValue != null)) return leftValue != null ? -1 : 1;
+        comparison = (rightValue ?? 0) - (leftValue ?? 0);
       }
       return comparison || collator.compare(a.name, b.name) || collator.compare(a.id, b.id);
     });
@@ -108,6 +110,33 @@
       throw new Error("Enter a valid branch name.");
     }
     return { owner, repo, branch };
+  }
+
+  function createConnectionStore(storage, scope = "/") {
+    const key = `cardtrader.connection.v1:${scope}`;
+    function clear() {
+      try { storage.removeItem(key); return true; }
+      catch (_) { return false; }
+    }
+    function read() {
+      try {
+        const raw = storage.getItem(key);
+        if (raw === null) return null;
+        const saved = JSON.parse(raw);
+        if (!object(saved) || saved.version !== 1 || !object(saved.config) || typeof saved.token !== "string" ||
+            saved.token.length > 4096 || /[\x00-\x1f\x7f]/.test(saved.token)) throw new Error("Invalid saved connection.");
+        return { config: validateConnection(saved.config), token: saved.token };
+      } catch (_) { clear(); return null; }
+    }
+    function save(connection, token) {
+      const config = validateConnection(connection);
+      if (typeof token !== "string" || token.length > 4096 || /[\x00-\x1f\x7f]/.test(token)) return false;
+      try {
+        storage.setItem(key, JSON.stringify({ version: 1, config, token }));
+        return true;
+      } catch (_) { clear(); return false; }
+    }
+    return { read, save, clear };
   }
 
   function encodeContent(value) {
@@ -243,7 +272,7 @@
   }
 
   const api = { DEFAULT_BRANCH, emptySettings, validateSettings, validatePrices, setting, change24h, filterCards, parseTarget,
-    validateConnection, encodeContent, decodeContent, createClient, imageSources };
+    validateConnection, createConnectionStore, encodeContent, decodeContent, createClient, imageSources };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.CardTraderData = Object.freeze(api);
 })(typeof globalThis !== "undefined" ? globalThis : this);
