@@ -24,6 +24,8 @@
   let imageSourceKey = null;
   let focusCardOnNavigation = false;
   let chartPoints = [];
+  let chartLayout = null;
+  let chartActiveIndex = -1;
 
   const formatMoney = amount => money.format(amount / 100);
   const formatDate = at => at ? dates.format(new Date(at)) : "Never";
@@ -123,6 +125,9 @@
       const row = document.createElement("tr");
       row.className = "card-row" + (state.selected === card.id ? " selected" : "");
       row.dataset.cardId = card.id;
+      row.addEventListener("click", event => {
+        if (!event.target.closest("a, button, input, select, textarea, label")) selectCard(card.id, true);
+      });
       const acquired = document.createElement("td");
       acquired.className = "acquired-cell";
       const checkbox = document.createElement("input");
@@ -213,6 +218,9 @@
   }
 
   function renderHistory(card) {
+    chartLayout = null;
+    chartActiveIndex = -1;
+    $("chart-tooltip").hidden = true;
     chartPoints = [...card.history].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
     $("history-range").textContent = `${chartPoints.length} ${chartPoints.length === 1 ? "point" : "points"}`;
     $("chart-start").textContent = chartPoints.length ? shortDate.format(new Date(chartPoints[0].at)) : "";
@@ -232,11 +240,13 @@
     $("history-body").replaceChildren(historyBody);
     $("history-chart").setAttribute("aria-label", chartPoints.length ?
       `${card.name} price history: ${chartPoints.length} points, ${formatMoney(chartPoints[0].priceCents)} to ${formatMoney(chartPoints[chartPoints.length - 1].priceCents)}. History data follows.` : "No price history available");
+    $("history-chart").tabIndex = chartPoints.length ? 0 : -1;
     requestAnimationFrame(drawChart);
   }
 
   function drawChart() {
     const canvas = $("history-chart");
+    chartLayout = null;
     if (!state.selected || $("detail-content").hidden) return;
     const width = canvas.clientWidth;
     if (!width) return;
@@ -258,6 +268,7 @@
     const first = Date.parse(chartPoints[0].at), last = Date.parse(chartPoints[chartPoints.length - 1].at);
     const x = point => first === last ? (left + right) / 2 : left + (Date.parse(point.at) - first) / (last - first) * (right - left);
     const y = point => bottom - (point.priceCents - min) / (max - min) * (bottom - top);
+    chartLayout = { first, last, left, right, width };
     ctx.beginPath();
     chartPoints.forEach((point, index) => index ? ctx.lineTo(x(point), y(point)) : ctx.moveTo(x(point), y(point)));
     ctx.strokeStyle = "#087b57";
@@ -270,6 +281,49 @@
     ctx.fillStyle = "#718078";
     ctx.textAlign = "left";
     ctx.fillText(formatMoney(high), left, 11);
+    const active = chartPoints[chartActiveIndex];
+    if (active) {
+      ctx.beginPath(); ctx.moveTo(x(active), top); ctx.lineTo(x(active), bottom);
+      ctx.strokeStyle = "#93b4a2"; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
+      ctx.beginPath(); ctx.arc(x(active), y(active), 4, 0, Math.PI * 2);
+      ctx.fillStyle = "#087b57"; ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
+      const tooltip = $("chart-tooltip");
+      $("chart-tooltip-price").textContent = formatMoney(active.priceCents);
+      $("chart-tooltip-date").textContent = formatDate(active.at);
+      tooltip.hidden = false;
+      tooltip.style.left = `${Math.max(4, Math.min(width - tooltip.offsetWidth - 4, x(active) - tooltip.offsetWidth / 2))}px`;
+      const above = y(active) - tooltip.offsetHeight - 10;
+      tooltip.style.top = `${above >= 4 ? above : Math.min(height - tooltip.offsetHeight - 4, y(active) + 10)}px`;
+    }
+  }
+
+  function inspectChart(event) {
+    if (!chartLayout || !chartPoints.length) return;
+    const bounds = $("history-chart").getBoundingClientRect();
+    const { first, last, left, right, width } = chartLayout;
+    const pointerX = (event.clientX - bounds.left) * width / bounds.width;
+    const at = first + Math.max(0, Math.min(1, (pointerX - left) / (right - left))) * (last - first);
+    let low = 0, high = chartPoints.length - 1;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (Date.parse(chartPoints[middle].at) < at) low = middle + 1;
+      else high = middle;
+    }
+    const index = low > 0 && at - Date.parse(chartPoints[low - 1].at) <= Date.parse(chartPoints[low].at) - at ? low - 1 : low;
+    if (index !== chartActiveIndex) showChartPoint(index);
+  }
+
+  function showChartPoint(index) {
+    if (!chartLayout || !chartPoints.length) return;
+    chartActiveIndex = Math.max(0, Math.min(chartPoints.length - 1, index));
+    drawChart();
+  }
+
+  function hideChartTooltip() {
+    if (chartActiveIndex < 0) return;
+    chartActiveIndex = -1;
+    $("chart-tooltip").hidden = true;
+    drawChart();
   }
 
   function renderTarget(card) {
@@ -289,6 +343,9 @@
     if (!card) {
       imageSourceKey = null;
       chartPoints = [];
+      chartLayout = null;
+      chartActiveIndex = -1;
+      $("chart-tooltip").hidden = true;
       $("card-image").removeAttribute("src");
       return;
     }
@@ -343,6 +400,9 @@
       row.className = "card-row";
       row.dataset.changedAt = change.at;
       row.dataset.changeId = change.id;
+      row.addEventListener("click", event => {
+        if (!event.target.closest("a, button, input, select, textarea, label")) openChangedCard(change.card);
+      });
       const dateCell = document.createElement("td");
       dateCell.className = "changed-date";
       const time = document.createElement("time");
@@ -664,6 +724,19 @@
   window.addEventListener("beforeunload", event => { if (hasDrafts() || state.busy) { event.preventDefault(); event.returnValue = ""; } });
   window.addEventListener("pagehide", () => { state.client?.disconnect(); state.pendingClient?.disconnect(); $("repo-token").value = ""; });
   window.addEventListener("pageshow", event => { if (event.persisted) window.location.reload(); });
+  $("history-chart").addEventListener("pointermove", inspectChart);
+  $("history-chart").addEventListener("pointerdown", inspectChart);
+  $("history-chart").addEventListener("pointerleave", event => { if (event.pointerType !== "touch") hideChartTooltip(); });
+  $("history-chart").addEventListener("pointercancel", hideChartTooltip);
+  $("history-chart").addEventListener("focus", () => showChartPoint(chartActiveIndex < 0 ? chartPoints.length - 1 : chartActiveIndex));
+  $("history-chart").addEventListener("blur", hideChartTooltip);
+  $("history-chart").addEventListener("keydown", event => {
+    if (event.key === "Escape") { hideChartTooltip(); return; }
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const index = chartActiveIndex < 0 ? chartPoints.length - 1 : chartActiveIndex;
+    showChartPoint(event.key === "Home" ? 0 : event.key === "End" ? chartPoints.length - 1 : index + (event.key === "ArrowLeft" ? -1 : 1));
+  });
   if (typeof ResizeObserver !== "undefined") new ResizeObserver(drawChart).observe($("history-chart"));
   else window.addEventListener("resize", drawChart);
   render();
