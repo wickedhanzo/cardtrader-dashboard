@@ -145,6 +145,19 @@ th.numeric { width: 96px; }
 .read-only-note { color: var(--muted); font-size: 11px; margin-bottom: 0; }
 .last-seen { font-size: 10px; color: #8a958e; margin-bottom: 0; }
 .page-footer { border-top: 1px solid var(--line); color: #8a958e; font-size: 10px; padding: 15px 0 22px; display: flex; justify-content: space-between; gap: 14px; }
+.view-navigation { display: flex; gap: 22px; border-bottom: 1px solid var(--line); margin-top: 17px; }
+.view-navigation a { display: inline-flex; align-items: center; gap: 7px; padding: 9px 0; color: var(--muted); text-decoration: none; border-bottom: 2px solid transparent; font-size: 13px; }
+.view-navigation a[aria-current="page"] { color: var(--green); border-color: var(--green); font-weight: 600; }
+.changes-view { padding: 24px 0; }
+.changes-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 220px); gap: 10px; }
+.changes-view .table-scroll { max-height: 60vh; overflow: auto; }
+#changes-table thead { position: sticky; top: 0; z-index: 1; }
+#changes-table .changed-date { width: 170px; font-size: 11px; color: var(--muted); }
+.mobile-change-date { display: none; }
+.changes-footer { border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 12px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
+.pagination { display: flex; align-items: center; gap: 4px; }
+.pagination input { width: 60px; height: 34px; padding: 0 4px; text-align: center; }
+.pagination > span { min-width: 33px; }
 dialog { width: min(480px, calc(100% - 32px)); padding: 25px; border: 1px solid #dce4de; border-radius: 8px; color: #252a2a; box-shadow: 0 16px 80px #172f2530; }
 dialog::backdrop { background: #15281d60; }
 .dialog-heading { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; gap: 8px; }
@@ -169,3 +182,4 @@ dialog .remember-choice input { width: 16px; }
 @media (max-width: 360px) { .topbar { padding-left: 12px; padding-right: 12px; } .brand-mark { display: none; } #connect-button { max-width: 145px; } .main { padding-left: 12px; padding-right: 12px; } .filter-secondary { gap: 9px; } .result-count { width: 100%; text-align: right; } th.numeric { width: 68px; } }
 @media (prefers-reduced-motion: reduce) { .spinning { animation: none; } }
 @media (max-width: 600px) { .mobile-drop-percent { display: block; font-size: 10px; font-weight: 400; margin-top: 3px; } .mobile-price-period { display: inline; } }
+@media (max-width: 600px) { .view-navigation { gap: 20px; } .view-navigation a { font-size: 12px; } .changes-filters { grid-template-columns: 1fr; } #changes-table .changed-date, #changes-table .previous-price { display: none; } .mobile-change-date { display: block; margin-top: 5px; } .changes-footer { justify-content: center; } #changes-range { width: 100%; text-align: center; font-size: 11px; } }

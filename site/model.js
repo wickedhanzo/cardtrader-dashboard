@@ -89,6 +89,43 @@
     });
   }
 
+  function priceChanges(prices) {
+    const changes = [];
+    for (const card of prices.cards) {
+      const history = [...card.history].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+      for (let index = 1; index < history.length; index += 1) {
+        const before = history[index - 1], after = history[index];
+        const changeCents = after.priceCents - before.priceCents;
+        if (!changeCents) continue;
+        changes.push({
+          id: `${card.id}:${index}`, card, at: after.at, timestamp: Date.parse(after.at),
+          beforeCents: before.priceCents, afterCents: after.priceCents, changeCents,
+          percent: before.priceCents > 0 ? changeCents / before.priceCents * 100 : null
+        });
+      }
+    }
+    return changes.sort((a, b) => b.timestamp - a.timestamp || a.card.name.localeCompare(b.card.name) || a.id.localeCompare(b.id));
+  }
+
+  function filterPriceChanges(changes, filters) {
+    const query = (filters.search || "").trim().toLocaleLowerCase();
+    return changes.filter(change => {
+      const card = change.card;
+      const text = [card.name, card.expansion, card.collectorNumber, String(card.blueprintId)].join("\n").toLocaleLowerCase();
+      return (!query || text.includes(query)) && (!filters.expansion || String(card.expansionId) === filters.expansion) &&
+        (filters.direction !== "drops" || change.changeCents < 0) && (filters.direction !== "increases" || change.changeCents > 0);
+    });
+  }
+
+  function paginatePriceChanges(changes, requestedPage) {
+    const total = changes.length;
+    const totalPages = Math.max(1, Math.ceil(total / 100));
+    const page = Math.max(1, Math.min(totalPages, Number.isFinite(Number(requestedPage)) ? Math.floor(Number(requestedPage)) : 1));
+    const start = (page - 1) * 100;
+    const end = Math.min(start + 100, total);
+    return { page, totalPages, start, end, total, items: changes.slice(start, end) };
+  }
+
   function parseTarget(input) {
     const raw = String(input).trim();
     if (!raw) return null;
@@ -265,13 +302,12 @@
       try {
         const url = new URL(card.imageUrl);
         if (url.protocol === "https:" && !url.username && !url.password) sources.push(url.href);
-      } catch (_) { /* Invalid optional image URLs use the name lookup below. */ }
+      } catch (_) { /* Missing or invalid exact artwork stays unavailable. */ }
     }
-    sources.push(`https://api.scryfall.com/cards/named?exact=${encodeURIComponent(card.name)}&format=image&version=normal`);
     return [...new Set(sources)];
   }
 
-  const api = { DEFAULT_BRANCH, emptySettings, validateSettings, validatePrices, setting, change24h, filterCards, parseTarget,
+  const api = { DEFAULT_BRANCH, emptySettings, validateSettings, validatePrices, setting, change24h, filterCards, priceChanges, filterPriceChanges, paginatePriceChanges, parseTarget,
     validateConnection, createConnectionStore, encodeContent, decodeContent, createClient, imageSources };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.CardTraderData = Object.freeze(api);

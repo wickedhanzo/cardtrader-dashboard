@@ -5,6 +5,7 @@
   const money = new Intl.NumberFormat(undefined, { style: "currency", currency: "EUR" });
   const dates = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" });
   const shortDate = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" });
+  const changeDates = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "medium" });
   const percentages = new Intl.NumberFormat(undefined, { style: "percent", minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "exceptZero" });
   const compactPercentages = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1, signDisplay: "exceptZero" });
   const preferencesKey = "cardtrader.repository.v1";
@@ -16,9 +17,12 @@
   const state = {
     client: null, prices: null, settings: D.emptySettings(), selected: null, visible: [],
     filters: { search: "", expansion: "", ownership: "all", watched: false, sort: "name" },
-    drafts: new Map(), busy: false, loading: false, session: 0, pendingClient: null, connecting: false
+    drafts: new Map(), busy: false, loading: false, session: 0, pendingClient: null, connecting: false,
+    view: window.location.hash === "#/changes" ? "changes" : "collection", changes: [],
+    changeFilters: { search: "", expansion: "", direction: "all" }, changesPage: 1
   };
-  let imageCardId = null;
+  let imageSourceKey = null;
+  let focusCardOnNavigation = false;
   let chartPoints = [];
 
   const formatMoney = amount => money.format(amount / 100);
@@ -26,9 +30,11 @@
   const targetText = amount => amount === null ? "" : (amount / 100).toFixed(2);
   const canEdit = () => Boolean(state.client?.canEdit) && !state.loading && !state.busy && !state.connecting;
   const hasDrafts = () => state.drafts.size > 0;
-  const fullPercent = drop => drop?.percent != null ? percentages.format(-drop.percent / 100) : "\u2014";
-  const displayPercent = drop => drop?.percent != null && Math.abs(drop.percent) >= 10000
-    ? `${compactPercentages.format(-drop.percent)}%` : fullPercent(drop);
+  const signedPercent = value => value != null ? percentages.format(value / 100) : "\u2014";
+  const compactSignedPercent = value => value != null && Math.abs(value) >= 10000
+    ? `${compactPercentages.format(value)}%` : signedPercent(value);
+  const fullPercent = drop => signedPercent(drop?.percent != null ? -drop.percent : null);
+  const displayPercent = drop => compactSignedPercent(drop?.percent != null ? -drop.percent : null);
 
   function icon(name) {
     const element = document.createElement("img");
@@ -91,6 +97,10 @@
     [...expansions].sort((a, b) => a[1].localeCompare(b[1])).forEach(([id, name]) => $("expansion").add(new Option(name, id)));
     if (!expansions.has(state.filters.expansion)) state.filters.expansion = "";
     $("expansion").value = state.filters.expansion;
+    $("changes-expansion").replaceChildren(new Option("All expansions", ""));
+    [...expansions].sort((a, b) => a[1].localeCompare(b[1])).forEach(([id, name]) => $("changes-expansion").add(new Option(name, id)));
+    if (!expansions.has(state.changeFilters.expansion)) state.changeFilters.expansion = "";
+    $("changes-expansion").value = state.changeFilters.expansion;
   }
 
   function renderEmpty() {
@@ -182,22 +192,24 @@
   }
 
   function renderImage(card) {
-    if (imageCardId === card.id) return;
-    imageCardId = card.id;
+    const sources = D.imageSources(card);
+    const sourceKey = `${card.id}\n${sources.join("\n")}`;
+    if (imageSourceKey === sourceKey) return;
+    imageSourceKey = sourceKey;
     const image = $("card-image");
     image.loading = "eager";
-    const sources = D.imageSources(card);
     let index = 0;
     image.hidden = true;
     $("image-unavailable").hidden = false;
     image.alt = `${card.name} card image`;
-    image.onload = () => { if (imageCardId === card.id) { image.hidden = false; $("image-unavailable").hidden = true; } };
+    image.onload = () => { if (imageSourceKey === sourceKey) { image.hidden = false; $("image-unavailable").hidden = true; } };
     image.onerror = () => {
-      if (imageCardId !== card.id) return;
+      if (imageSourceKey !== sourceKey) return;
       if (++index < sources.length) image.src = sources[index];
       else { image.hidden = true; $("image-unavailable").hidden = false; }
     };
-    image.src = sources[0];
+    if (sources.length) image.src = sources[0];
+    else image.removeAttribute("src");
   }
 
   function renderHistory(card) {
@@ -275,7 +287,8 @@
     $("detail-empty").hidden = Boolean(card);
     $("detail-content").hidden = !card;
     if (!card) {
-      imageCardId = null;
+      imageSourceKey = null;
+      chartPoints = [];
       $("card-image").removeAttribute("src");
       return;
     }
@@ -308,14 +321,103 @@
 
   function render() {
     updateControls();
-    renderMetrics();
-    renderTable();
-    renderDetail();
+    const changesView = state.view === "changes";
+    $("collection-view").hidden = changesView;
+    $("changes-view").hidden = !changesView;
+    $("page-title").textContent = changesView ? "Price changes" : "Price tracker";
+    document.title = `${changesView ? "Price changes" : "Collection"} | CardTrader`;
+    for (const [id, active] of [["collection-link", !changesView], ["changes-link", changesView]]) {
+      if (active) $(id).setAttribute("aria-current", "page"); else $(id).removeAttribute("aria-current");
+    }
+    if (changesView) renderPriceChanges();
+    else { renderMetrics(); renderTable(); renderDetail(); }
+  }
+
+  function renderPriceChanges() {
+    const filtered = D.filterPriceChanges(state.changes, state.changeFilters);
+    const page = D.paginatePriceChanges(filtered, state.changesPage);
+    state.changesPage = page.page;
+    const fragment = document.createDocumentFragment();
+    for (const change of page.items) {
+      const row = document.createElement("tr");
+      row.className = "card-row";
+      row.dataset.changedAt = change.at;
+      row.dataset.changeId = change.id;
+      const dateCell = document.createElement("td");
+      dateCell.className = "changed-date";
+      const time = document.createElement("time");
+      time.dateTime = change.at;
+      time.textContent = changeDates.format(new Date(change.at));
+      time.title = change.at;
+      dateCell.append(time);
+      const cardCell = document.createElement("td");
+      const name = document.createElement("button");
+      name.type = "button";
+      name.className = "card-title";
+      name.textContent = change.card.name;
+      name.addEventListener("click", () => openChangedCard(change.card));
+      const metadata = document.createElement("span");
+      metadata.className = "card-meta";
+      metadata.textContent = `${change.card.expansion} / #${change.card.collectorNumber}${change.card.isFoil ? " / Foil" : ""}`;
+      const mobileTime = time.cloneNode(true);
+      mobileTime.className = "mobile-change-date card-meta";
+      cardCell.append(name, metadata, mobileTime);
+      const before = document.createElement("td");
+      before.className = "numeric previous-price";
+      before.textContent = formatMoney(change.beforeCents);
+      const after = document.createElement("td");
+      after.className = "numeric price";
+      after.textContent = formatMoney(change.afterCents);
+      const amount = document.createElement("td");
+      amount.className = `numeric ${change.changeCents < 0 ? "positive" : "negative"}`;
+      amount.textContent = `${change.changeCents < 0 ? "-" : "+"}${formatMoney(Math.abs(change.changeCents))}`;
+      const percentage = document.createElement("span");
+      percentage.className = "drop-percent" + (change.percent == null ? " muted" : "");
+      percentage.textContent = compactSignedPercent(change.percent);
+      percentage.title = signedPercent(change.percent);
+      amount.append(percentage);
+      row.append(dateCell, cardCell, before, after, amount);
+      fragment.append(row);
+    }
+    $("changes-body").replaceChildren(fragment);
+    $("changes-count").textContent = `${page.total.toLocaleString()} ${page.total === 1 ? "change" : "changes"}`;
+    $("changes-range").textContent = `${(page.total ? page.start + 1 : 0).toLocaleString()}-${page.end.toLocaleString()} of ${page.total.toLocaleString()}`;
+    $("changes-page").value = page.page;
+    $("changes-page").max = page.totalPages;
+    $("changes-total-pages").textContent = `of ${page.totalPages.toLocaleString()}`;
+    const disabled = !state.client || state.loading || state.connecting || page.total === 0;
+    $("changes-page").disabled = disabled;
+    $("changes-first").disabled = disabled || page.page === 1;
+    $("changes-previous").disabled = disabled || page.page === 1;
+    $("changes-next").disabled = disabled || page.page === page.totalPages;
+    $("changes-last").disabled = disabled || page.page === page.totalPages;
+    $("clear-changes-search").hidden = !state.changeFilters.search;
+    $("changes-empty").hidden = page.total > 0;
+    $("changes-empty-title").textContent = !state.client ? "No repository connected" : state.changes.length ? "No matching changes" : "No price changes yet";
+    $("changes-empty-action").textContent = !state.client ? "Connect repository" : state.changes.length ? "Clear filters" : "Refresh";
+    $("changes-empty-action").disabled = state.loading || state.connecting;
+  }
+
+  function resetCollectionFilters(overrides = {}) {
+    state.filters = { search: "", expansion: "", ownership: "all", watched: false, sort: "name", ...overrides };
+    $("search").value = state.filters.search;
+    $("expansion").value = state.filters.expansion;
+    $("sort").value = state.filters.sort;
+    $("watched").checked = state.filters.watched;
+    document.querySelectorAll("[data-ownership]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.ownership === state.filters.ownership)));
+  }
+
+  function openChangedCard(card) {
+    resetCollectionFilters({ search: String(card.blueprintId), expansion: String(card.expansionId) });
+    state.selected = card.id;
+    focusCardOnNavigation = true;
+    window.location.hash = "#/collection";
   }
 
   function showSnapshot(snapshot) {
     state.prices = snapshot.prices;
     state.settings = snapshot.settings;
+    state.changes = D.priceChanges(snapshot.prices);
     $("repository-label").textContent = `${state.client.config.owner}/${state.client.config.repo} / ${state.client.config.branch}`;
     $("last-checked").textContent = snapshot.prices.lastCheckedAt ? `Checked ${formatDate(snapshot.prices.lastCheckedAt)}` : "Never / partial snapshot";
     renderExpansions();
@@ -451,6 +553,8 @@
     state.client?.disconnect();
     state.client = null;
     state.prices = null;
+    state.changes = [];
+    state.changesPage = 1;
     state.settings = D.emptySettings();
     state.selected = null;
     state.busy = false;
@@ -461,6 +565,7 @@
     $("repository-label").textContent = "No repository connected";
     $("last-checked").textContent = "Not checked";
     renderExpansions();
+    renderMetrics(); renderTable(); renderDetail(); renderPriceChanges();
     notice(forgotten ? "" : "Disconnected, but this browser could not remove the saved connection. Clear site data to forget it.", forgotten ? undefined : "error");
     render();
   });
@@ -477,10 +582,48 @@
   $("empty-action").addEventListener("click", () => {
     if (!state.client) return openConnect();
     if (!state.prices?.cards.length) return refresh();
-    state.filters = { search: "", expansion: "", ownership: "all", watched: false, sort: "name" };
-    $("search").value = ""; $("expansion").value = ""; $("sort").value = "name"; $("watched").checked = false;
-    document.querySelectorAll("[data-ownership]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.ownership === "all")));
+    resetCollectionFilters();
     render();
+  });
+  function filterChanges() { state.changesPage = 1; renderPriceChanges(); }
+  $("changes-search").addEventListener("input", event => { state.changeFilters.search = event.target.value; filterChanges(); });
+  $("clear-changes-search").addEventListener("click", () => { $("changes-search").value = ""; state.changeFilters.search = ""; filterChanges(); $("changes-search").focus(); });
+  $("changes-expansion").addEventListener("change", event => { state.changeFilters.expansion = event.target.value; filterChanges(); });
+  document.querySelectorAll("[data-direction]").forEach(button => button.addEventListener("click", () => {
+    state.changeFilters.direction = button.dataset.direction;
+    document.querySelectorAll("[data-direction]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
+    filterChanges();
+  }));
+  for (const [id, target] of [["changes-first", () => 1], ["changes-previous", () => state.changesPage - 1],
+    ["changes-next", () => state.changesPage + 1], ["changes-last", () => Number.MAX_SAFE_INTEGER]]) {
+    $(id).addEventListener("click", () => changePage(target()));
+  }
+  function changePage(page) {
+    state.changesPage = page;
+    renderPriceChanges();
+    const table = $("changes-table").parentElement;
+    table.scrollTop = 0;
+    table.scrollIntoView({ block: "nearest", behavior: "instant" });
+    $("changes-body").querySelector("button")?.focus({ preventScroll: true });
+  }
+  function jumpChangePage() { changePage(Number($("changes-page").value)); }
+  $("changes-page").addEventListener("change", jumpChangePage);
+  $("changes-page").addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); jumpChangePage(); } });
+  $("changes-empty-action").addEventListener("click", () => {
+    if (!state.client) return openConnect();
+    if (!state.changes.length) return refresh();
+    state.changeFilters = { search: "", expansion: "", direction: "all" };
+    $("changes-search").value = ""; $("changes-expansion").value = "";
+    document.querySelectorAll("[data-direction]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.direction === "all")));
+    filterChanges();
+  });
+  window.addEventListener("hashchange", () => {
+    state.view = window.location.hash === "#/changes" ? "changes" : "collection";
+    render();
+    if (focusCardOnNavigation && state.view === "collection") {
+      focusCardOnNavigation = false;
+      selectCard(state.selected, true);
+    }
   });
   $("close-detail").addEventListener("click", () => { state.selected = null; renderTable(); renderDetail(); });
   for (const [button, offset] of [["previous-card", -1], ["next-card", 1]]) {
