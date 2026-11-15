@@ -64,6 +64,7 @@ h1 { font-size: 27px; line-height: 1.2; font-weight: 650; margin: 0; }
 .search-field input::-webkit-search-cancel-button { display: none; }
 .search-field .icon-button { width: 25px; height: 26px; flex-basis: 25px; margin-right: -4px; }
 .select-field select { width: 100%; font-size: 12px; }
+.card-type-field { width: 130px; max-width: 100%; }
 .filter-secondary { display: flex; align-items: center; flex-wrap: wrap; gap: 16px; margin: 15px 0; }
 .segments { display: flex; align-items: center; padding: 3px; background: #eaf0ec; border-radius: 5px; }
 .segments button { padding: 4px 11px; font-size: 12px; background: transparent; border-radius: 3px; color: #6b7770; min-height: 29px; }

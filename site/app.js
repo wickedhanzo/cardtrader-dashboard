@@ -20,12 +20,12 @@
   }, new URL(".", window.location.href).pathname);
   const state = {
     client: null, prices: null, settings: D.emptySettings(), selected: null, visible: [],
-    filters: { search: "", expansion: "", ownership: "all", watched: false, cardmarketLowAboveNm: false, sort: "name" },
+    filters: { search: "", expansion: "", ownership: "all", cardType: "all", watched: false, cardmarketLowAboveNm: false, sort: "name" },
     drafts: new Map(), busy: false, loading: false, session: 0, pendingClient: null, connecting: false,
     view: viewFromHash(), runs: [],
-    changeFilters: { search: "", expansion: "", direction: "all", ownership: "all" }, changesPage: 1,
+    changeFilters: { search: "", expansion: "", direction: "all", ownership: "all", cardType: "all" }, changesPage: 1,
     expandedRuns: new Set(), runPages: new Map(), runSorts: new Map(),
-    binderFilters: { search: "", expansion: "", ownership: "all", finish: "all" }, binderPage: 1,
+    binderFilters: { search: "", expansion: "", ownership: "all", finish: "all", cardType: "all" }, binderPage: 1,
     visibleGrades: new Set(columnStore.read())
   };
   let imageSourceKey = null;
@@ -1007,10 +1007,11 @@
   }
 
   function resetCollectionFilters(overrides = {}) {
-    state.filters = { search: "", expansion: "", ownership: "all", watched: false, cardmarketLowAboveNm: false, sort: "name", ...overrides };
+    state.filters = { search: "", expansion: "", ownership: "all", cardType: "all", watched: false, cardmarketLowAboveNm: false, sort: "name", ...overrides };
     $("search").value = state.filters.search;
     $("expansion").value = state.filters.expansion;
     $("sort").value = state.filters.sort;
+    $("card-type").value = state.filters.cardType;
     $("watched").checked = state.filters.watched;
     $("cardmarket-low-above-nm").checked = state.filters.cardmarketLowAboveNm;
     document.querySelectorAll("[data-ownership]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.ownership === state.filters.ownership)));
@@ -1188,6 +1189,7 @@
   $("sort").addEventListener("change", event => { state.filters.sort = event.target.value; renderTable(); renderDetail(); });
   $("watched").addEventListener("change", event => { state.filters.watched = event.target.checked; renderTable(); renderDetail(); });
   $("cardmarket-low-above-nm").addEventListener("change", event => { state.filters.cardmarketLowAboveNm = event.target.checked; renderTable(); renderDetail(); });
+  $("card-type").addEventListener("change", event => { state.filters.cardType = event.target.value; renderTable(); renderDetail(); });
   document.querySelectorAll("[data-ownership]").forEach(button => button.addEventListener("click", () => {
     state.filters.ownership = button.dataset.ownership;
     document.querySelectorAll("[data-ownership]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
@@ -1204,6 +1206,7 @@
   $("clear-binder-search").addEventListener("click", () => { $("binder-search").value = ""; state.binderFilters.search = ""; filterBinder(); $("binder-search").focus(); });
   $("binder-expansion").addEventListener("change", event => { state.binderFilters.expansion = event.target.value; filterBinder(); });
   $("binder-finish").addEventListener("change", event => { state.binderFilters.finish = event.target.value; filterBinder(); });
+  $("binder-card-type").addEventListener("change", event => { state.binderFilters.cardType = event.target.value; filterBinder(); });
   document.querySelectorAll("[data-binder-ownership]").forEach(button => button.addEventListener("click", () => {
     state.binderFilters.ownership = button.dataset.binderOwnership;
     document.querySelectorAll("[data-binder-ownership]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
@@ -1223,8 +1226,9 @@
   $("binder-empty-action").addEventListener("click", () => {
     if (!state.client) return openConnect();
     if (!state.prices?.cards.length) return refresh();
-    state.binderFilters = { ...state.binderFilters, search: "", ownership: "all", finish: "all" };
+    state.binderFilters = { ...state.binderFilters, search: "", ownership: "all", finish: "all", cardType: "all" };
     $("binder-search").value = ""; $("binder-finish").value = "all";
+    $("binder-card-type").value = "all";
     document.querySelectorAll("[data-binder-ownership]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.binderOwnership === "all")));
     filterBinder();
   });
@@ -1232,6 +1236,7 @@
   $("changes-search").addEventListener("input", event => { state.changeFilters.search = event.target.value; filterChanges(); });
   $("clear-changes-search").addEventListener("click", () => { $("changes-search").value = ""; state.changeFilters.search = ""; filterChanges(); $("changes-search").focus(); });
   $("changes-expansion").addEventListener("change", event => { state.changeFilters.expansion = event.target.value; filterChanges(); });
+  $("changes-card-type").addEventListener("change", event => { state.changeFilters.cardType = event.target.value; filterChanges(); });
   document.querySelectorAll("[data-direction]").forEach(button => button.addEventListener("click", () => {
     state.changeFilters.direction = button.dataset.direction;
     document.querySelectorAll("[data-direction]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
@@ -1260,8 +1265,9 @@
   $("changes-empty-action").addEventListener("click", () => {
     if (!state.client) return openConnect();
     if (!state.runs.length) return refresh();
-    state.changeFilters = { search: "", expansion: "", direction: "all", ownership: "all" };
+    state.changeFilters = { search: "", expansion: "", direction: "all", ownership: "all", cardType: "all" };
     $("changes-search").value = ""; $("changes-expansion").value = "";
+    $("changes-card-type").value = "all";
     document.querySelectorAll("[data-direction]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.direction === "all")));
     document.querySelectorAll("[data-change-ownership]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.changeOwnership === "all")));
     filterChanges();

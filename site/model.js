@@ -36,6 +36,8 @@
     352465, 352466, 352467, 352468, 352469, 352470, 352471, 352472,
     352474, 352475, 352476, 352477, 352478, 352479, 352480, 352481
   ]);
+  // FamilyMart promos and the metal emblem do not use CardTrader's T-prefixed token numbers.
+  const TOKEN_BLUEPRINTS = new Set([352419, 361874, 361875, 361876, 361877, 361878, 361879, 361880, 361881, 361882, 361883]);
   const emptySettings = () => ({ schemaVersion: 1, cards: {} });
   const validConditionWatches = watches => object(watches) && Object.entries(watches).every(([code, amount]) =>
     secondaryCondition(code) && (amount === null || targetCents(amount)));
@@ -127,6 +129,16 @@
       }
     } catch (_) { /* Legacy cards can have no image metadata. */ }
     return FINISHES.foil;
+  }
+
+  function isToken(card) {
+    return TOKEN_BLUEPRINTS.has(card?.blueprintId) ||
+      typeof card?.collectorNumber === "string" && /^T\s*\d+[a-z]?(?:\s*\/\s*\d+[a-z]?)?$/i.test(card.collectorNumber.trim()) ||
+      typeof card?.rarity === "string" && /^token$/i.test(card.rarity.trim());
+  }
+
+  function matchesCardType(card, type) {
+    return !["cards", "tokens"].includes(type) || isToken(card) === (type === "tokens");
   }
 
   function cardLanguageInfo(card) {
@@ -230,6 +242,7 @@
     const query = (filters.search || "").trim().toLocaleLowerCase();
     const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
     const result = prices.cards.filter(card => {
+      if (!matchesCardType(card, filters.cardType)) return false;
       const saved = setting(settings, card.id);
       const haystack = [card.name, card.expansion, card.collectorNumber, String(card.blueprintId), cardFinish(card).label].join("\n").toLocaleLowerCase();
       return (!query || haystack.includes(query)) && (!filters.expansion || String(card.expansionId) === filters.expansion) &&
@@ -285,7 +298,7 @@
   }
 
   function binderPage(prices, settings, filters, requestedPage) {
-    const scoped = (prices?.cards || []).filter(card => String(card.expansionId) === filters.expansion &&
+    const scoped = (prices?.cards || []).filter(card => String(card.expansionId) === filters.expansion && matchesCardType(card, filters.cardType) &&
       (!filters.finish || filters.finish === "all" || filters.finish === "foil" && card.isFoil || cardFinish(card).code === filters.finish));
     const cards = filterCards({ cards: scoped, lastCheckedAt: prices?.lastCheckedAt }, settings,
       { search: filters.search, ownership: filters.ownership, sort: "collector-number" });
@@ -301,6 +314,7 @@
     const query = (filters.search || "").trim().toLocaleLowerCase();
     return changes.filter(change => {
       const card = change.card;
+      if (!matchesCardType(card, filters.cardType)) return false;
       const acquired = setting(settings, card.id).acquired;
       const text = [card.name, card.expansion, card.collectorNumber, String(card.blueprintId), cardFinish(card).label].join("\n").toLocaleLowerCase();
       return (!query || text.includes(query)) && (!filters.expansion || String(card.expansionId) === filters.expansion) &&
@@ -343,7 +357,7 @@
 
   function filterCheckRuns(runs, filters, settings = emptySettings()) {
     const active = Boolean((filters.search || "").trim() || filters.expansion || (filters.direction && filters.direction !== "all") ||
-      ["missing", "acquired"].includes(filters.ownership));
+      ["missing", "acquired"].includes(filters.ownership) || ["cards", "tokens"].includes(filters.cardType));
     return runs.flatMap(run => {
       const changes = filterPriceChanges(run.changes, filters, settings);
       return active && !changes.length ? [] : [{ ...run, changes }];
@@ -544,7 +558,7 @@
     return [...new Set(sources)];
   }
 
-  const api = { DEFAULT_BRANCH, CONDITIONS, emptySettings, validateSettings, validatePrices, cardLanguage, cardLanguageInfo, cardFinish,
+  const api = { DEFAULT_BRANCH, CONDITIONS, emptySettings, validateSettings, validatePrices, cardLanguage, cardLanguageInfo, cardFinish, isToken,
     cardmarketUrl, cardmarketReferences, cardmarketSortValue, createColumnStore, setting, watchThreshold, watchTargets,
     conditionPrice, conditionSeries, change24h, filterCards, binderPage, priceChanges, filterPriceChanges, sortPriceChanges, checkRuns, filterCheckRuns, paginatePriceChanges, parseTarget,
     validateConnection, createConnectionStore, encodeContent, decodeContent, createClient, imageSources };
