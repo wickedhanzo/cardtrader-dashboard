@@ -2,7 +2,9 @@
 
 Public browser UI for a private CardTraderActions repository. This repository contains only static UI assets, a GitHub Pages workflow, and an asset-versioning helper. Price history, acquired status, watches, and API secrets belong in the separate private checker repository.
 
-The Collection view includes search, acquired flags, price watches, exact-printing artwork/links, and 24-hour euro/percentage changes. The Price changes view groups checks newest first, including zero-update runs, with checked/new/update totals and expandable change lists. Runs and their changes use 100-entry pages with search, expansion, and direction filters. Older records stay under Earlier history. Both views share the same connection. Deployments give JavaScript/CSS content-versioned URLs so cached assets cannot leave new controls inert.
+The Collection view includes search, acquired flags, independent condition price watches, exact-printing artwork/links, and adjacent NM/SP/MP/PL/HP/PO/M price columns. Detail checkboxes compare condition histories with colored chart observations and hover prices; the bell beside a grade opens its watch editor. CardTrader uses SP, not a separate LP condition. Existing NM history and watches are preserved; other histories begin with their first actual observation. No eligible returned listing displays as a dash, not zero. Marketplace results are capped, so prices describe eligible returned offers rather than all sellers.
+
+The 24-hour euro/percentage changes, Price changes feed and run update totals remain **NM-only**. Checks are grouped newest first, including zero-update runs, with checked/new/update totals and expandable change lists. Runs and their changes use 100-entry pages with search, expansion, and direction filters. Older records stay under Earlier history. All views share the same connection. Deployments give JavaScript/CSS content-versioned URLs so cached assets cannot leave new controls inert.
 
 1. Push this folder to a new public GitHub repository with `main` as the default branch.
 2. Under **Settings > Pages > Build and deployment**, choose **GitHub Actions**.

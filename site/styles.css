@@ -127,8 +127,8 @@ th.numeric { width: 96px; }
 .section-label { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .section-label h3 { font-size: 12px; font-weight: 600; margin: 0; }
 .section-label span { font-size: 10px; color: var(--muted); }
-.chart-wrap { height: 130px; position: relative; margin-top: 11px; }
-#history-chart { display: block; width: 100%; height: 130px; cursor: crosshair; }
+.chart-wrap { height: 170px; position: relative; margin-top: 11px; }
+#history-chart { display: block; width: 100%; height: 170px; cursor: crosshair; }
 .chart-tooltip { position: absolute; z-index: 1; pointer-events: none; max-width: calc(100% - 8px); padding: 6px 8px; border: 1px solid var(--line); border-radius: 4px; background: #fff; box-shadow: 0 2px 6px #1b38201a; overflow-wrap: anywhere; }
 .chart-tooltip strong { display: block; font-size: 12px; color: #252a2a; font-variant-numeric: tabular-nums; }
 .chart-tooltip span { display: block; font-size: 10px; color: var(--muted); margin-top: 2px; }
@@ -139,6 +139,39 @@ th.numeric { width: 96px; }
 .history-scroll { max-height: 180px; overflow: auto; margin-top: 6px; }
 .history-scroll td { font-size: 10px; padding: 6px; }
 .history-scroll th.numeric { width: 80px; }
+.history-scroll .history-grade { width: 45px; }
+.grade-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--grade-color); margin-right: 5px; vertical-align: middle; }
+.grade-sp { --grade-color: #1976ad; }
+.grade-mp { --grade-color: #a87912; }
+.grade-pl { --grade-color: #c05b2c; }
+.grade-hp { --grade-color: #b64770; }
+.grade-po { --grade-color: #8756a0; }
+.grade-m { --grade-color: #557c39; }
+#cards-table { min-width: 1000px; }
+#cards-table .card-column { width: 220px; }
+#cards-table .condition-column { width: 76px; padding-left: 6px; padding-right: 6px; }
+#cards-table .nm-column { width: 98px; }
+#cards-table .nm-watch-column { width: 90px; }
+#cards-table .acquired-cell, #cards-table td:nth-child(2), #cards-table .card-column { position: sticky; background: inherit; z-index: 1; }
+#cards-table .acquired-cell { left: 0; }
+#cards-table td:nth-child(2), #cards-table .card-column { left: 37px; box-shadow: 1px 0 var(--line); }
+#cards-table thead th { background: #f2f5f3; }
+.condition-value { padding: 3px 0; background: transparent; font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.condition-value:hover { text-decoration: underline; text-underline-offset: 3px; }
+.condition-watch { display: flex; align-items: center; justify-content: flex-end; gap: 2px; color: var(--muted); font-size: 9px; }
+.condition-watch .icon { width: 10px; height: 10px; flex-basis: 10px; }
+.condition-watch.at-target { color: var(--green); font-weight: 600; }
+.condition-prices { margin: 10px 0 0; padding: 0; border: 0; min-width: 0; }
+.condition-price-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; border-bottom: 1px solid #edf0ee; min-height: 35px; gap: 5px; }
+.condition-price-label { display: grid; grid-template-columns: 16px 44px minmax(0, 1fr); gap: 7px; align-items: center; cursor: pointer; font-size: 12px; min-width: 0; }
+.condition-price-label input { accent-color: var(--grade-color); }
+.condition-code { color: var(--grade-color); font-weight: 600; white-space: nowrap; }
+.condition-amount { text-align: right; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.condition-watch-button { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; height: 32px; padding: 0 4px; background: transparent; color: var(--muted); font-size: 10px; min-width: 32px; }
+.condition-watch-button:hover { background: #eaf0ed; }
+.condition-watch-button.has-watch { color: var(--green); }
+.condition-watch-button .icon { width: 13px; height: 13px; flex-basis: 13px; }
+#watch-condition { width: 100%; margin-bottom: 12px; font-size: 12px; }
 .settings-section { margin-top: 18px; padding-top: 15px; border-top: 1px solid var(--line); }
 .acquired-toggle { display: flex; align-items: center; gap: 9px; font-size: 12px; margin-bottom: 17px; }
 #detail-acquired-status { margin-left: auto; color: var(--muted); font-size: 10px; }
@@ -232,6 +265,7 @@ dialog .remember-choice input { width: 16px; }
 @media (max-width: 600px) { .topbar { padding: 13px 16px; min-height: 71px; } .brand { font-size: 18px; gap: 8px; } .brand-mark { width: 34px; height: 38px; } .brand-caption { font-size: 8px; } .topbar-actions { gap: 2px; } #connect-button { max-width: 165px; font-size: 11px; gap: 5px; padding: 6px 8px; } #access-badge { display: none; } .main { padding: 23px 16px 0; } h1 { font-size: 25px; } .connection-line { font-size: 10px; } #repository-label { max-width: 100%; overflow-wrap: anywhere; } .last-checked { border: 0; padding: 0; margin: 0 0 0 13px; flex-basis: 100%; } .metrics { padding: 20px 0; gap: 0; } .metric { padding: 0 10px; } .metric > span { font-size: 10px; } .metric strong { font-size: 23px; } .filters { grid-template-columns: 1fr 1fr; } .search-field { grid-column: 1 / -1; } .sort-field { grid-column: auto; } .filter-secondary { gap: 12px; } .segments button { padding: 4px 9px; font-size: 11px; } .watched-filter { font-size: 11px; gap: 5px; } .result-count { font-size: 10px; } table { font-size: 11px; } th, td { padding-left: 7px; padding-right: 7px; } th.numeric { width: 75px; } .card-title { font-size: 12px; } .card-meta { font-size: 9px; } th.acquired-cell, td.acquired-cell { width: 28px; padding-left: 2px; padding-right: 4px; } .change-column { display: none; } .empty-state { min-height: 300px; } .repo-fields { grid-template-columns: 1fr; gap: 12px; } dialog { padding: 20px; } .card-art { height: 250px; } }
 @media (max-width: 360px) { .topbar { padding-left: 12px; padding-right: 12px; } .brand-mark { display: none; } #connect-button { max-width: 145px; } .main { padding-left: 12px; padding-right: 12px; } .filter-secondary { gap: 9px; } .result-count { width: 100%; text-align: right; } th.numeric { width: 68px; } }
 @media (prefers-reduced-motion: reduce) { .spinning { animation: none; } }
+@media (max-width: 600px) { #cards-table { min-width: 895px; } #cards-table .card-column { width: 145px; } #cards-table td:nth-child(2), #cards-table .card-column { left: 28px; } #cards-table .nm-column { width: 82px; } #cards-table .condition-column { width: 74px; } }
 @media (max-width: 600px) { .mobile-drop-percent { display: block; font-size: 10px; font-weight: 400; margin-top: 3px; } .mobile-price-period { display: inline; } }
 @media (max-width: 600px) { .view-navigation { gap: 20px; } .view-navigation a { font-size: 12px; } .changes-filters { grid-template-columns: 1fr; } #changes-table .changed-date, #changes-table .previous-price { display: none; } .mobile-change-date { display: block; margin-top: 5px; } .changes-footer { justify-content: center; } #changes-range { width: 100%; text-align: center; font-size: 11px; } }
 @media (max-width: 740px) { .binder-spread { max-width: 520px; padding: 10px; } .binder-pages { grid-template-columns: minmax(0, 1fr); gap: 18px; } .binder-spine, .binder-sheet-empty { display: none; } }

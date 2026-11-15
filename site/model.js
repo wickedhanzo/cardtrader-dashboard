@@ -2,12 +2,24 @@
   "use strict";
 
   const DEFAULT_BRANCH = "cardtrader-state";
+  const CONDITIONS = Object.freeze([
+    { code: "NM", name: "Near Mint", color: "#087b57", dash: [] },
+    { code: "SP", name: "Slightly Played", color: "#1976ad", dash: [5, 2] },
+    { code: "MP", name: "Moderately Played", color: "#a87912", dash: [2, 2] },
+    { code: "PL", name: "Played", color: "#c05b2c", dash: [8, 2, 2, 2] },
+    { code: "HP", name: "Heavily Played", color: "#b64770", dash: [1, 3] },
+    { code: "PO", name: "Poor", color: "#8756a0", dash: [9, 4] },
+    { code: "M", name: "Mint", color: "#557c39", dash: [6, 2] }
+  ].map(Object.freeze));
+  const secondaryCondition = code => code !== "NM" && CONDITIONS.some(condition => condition.code === code);
   const ID = /^\d+:\d+:(normal|foil)$/;
   const object = value => value !== null && typeof value === "object" && !Array.isArray(value);
   const cents = value => Number.isSafeInteger(value) && value >= 0;
   const targetCents = value => cents(value) && value <= 2147483647;
   const date = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value));
   const emptySettings = () => ({ schemaVersion: 1, cards: {} });
+  const validConditionWatches = watches => object(watches) && Object.entries(watches).every(([code, amount]) =>
+    secondaryCondition(code) && (amount === null || targetCents(amount)));
 
   function validateSettings(value) {
     if (!object(value) || value.schemaVersion !== 1 || !object(value.cards)) {
@@ -16,7 +28,8 @@
     for (const [id, card] of Object.entries(value.cards)) {
       if (!ID.test(id) || !object(card) ||
           (card.acquired !== undefined && typeof card.acquired !== "boolean") ||
-          (card.notificationPriceCents !== undefined && card.notificationPriceCents !== null && !targetCents(card.notificationPriceCents))) {
+          (card.notificationPriceCents !== undefined && card.notificationPriceCents !== null && !targetCents(card.notificationPriceCents)) ||
+          (card.conditionWatches !== undefined && !validConditionWatches(card.conditionWatches))) {
         throw new Error("settings.json contains an invalid card setting.");
       }
     }
@@ -38,6 +51,14 @@
         throw new Error("prices.json contains an invalid or duplicate card. Check the worker output.");
       }
       seen.add(card.id);
+      if ((card.conditionsCheckedAt != null && !date(card.conditionsCheckedAt)) ||
+          (card.conditions !== undefined && (!object(card.conditions) || Object.entries(card.conditions).some(([code, price]) =>
+            !secondaryCondition(code) || !object(price) || !cents(price.currentPriceCents) || typeof price.available !== "boolean" ||
+            !date(price.lastSeenAt) || !Array.isArray(price.history) || !price.history.length ||
+            price.history.some((point, index) => !object(point) || !date(point.at) || !cents(point.priceCents) ||
+              index > 0 && Date.parse(point.at) < Date.parse(price.history[index - 1].at)) ||
+            price.currentPriceCents !== price.history[price.history.length - 1].priceCents))))
+        throw new Error("prices.json contains invalid condition prices.");
     }
     const runIds = new Set();
     if (value.runs !== undefined) {
@@ -59,6 +80,29 @@
   function setting(settings, id) {
     const card = settings.cards[id] || {};
     return { acquired: card.acquired === true, notificationPriceCents: card.notificationPriceCents ?? null };
+  }
+
+  function watchThreshold(settings, id, condition = "NM") {
+    return condition === "NM" ? setting(settings, id).notificationPriceCents : settings.cards[id]?.conditionWatches?.[condition] ?? null;
+  }
+
+  function watchTargets(settings, id) {
+    return CONDITIONS.map(condition => ({ ...condition, thresholdCents: watchThreshold(settings, id, condition.code) }))
+      .filter(watch => watch.thresholdCents !== null);
+  }
+
+  function conditionPrice(card, condition = "NM") {
+    const price = condition === "NM" ? card.available || card.history.length || card.currentPriceCents > 0 ? card : null : card.conditions?.[condition];
+    return price ? { currentPriceCents: price.currentPriceCents, available: price.available, lastSeenAt: price.lastSeenAt,
+      history: price.history, checked: true } : { currentPriceCents: null, available: false, lastSeenAt: null,
+      history: [], checked: Boolean(card.conditionsCheckedAt) };
+  }
+
+  function conditionSeries(card, selected) {
+    return CONDITIONS.filter(condition => selected.has(condition.code)).map(condition => ({ ...condition,
+      points: conditionPrice(card, condition.code).history.map(point => ({ ...point, condition: condition.code, color: condition.color }))
+        .sort((a, b) => Date.parse(a.at) - Date.parse(b.at))
+    }));
   }
 
   function change24h(card, checkedAt) {
@@ -84,7 +128,7 @@
       const haystack = [card.name, card.expansion, card.collectorNumber, String(card.blueprintId)].join("\n").toLocaleLowerCase();
       return (!query || haystack.includes(query)) && (!filters.expansion || String(card.expansionId) === filters.expansion) &&
         (filters.ownership !== "acquired" || saved.acquired) && (filters.ownership !== "missing" || !saved.acquired) &&
-        (!filters.watched || saved.notificationPriceCents !== null);
+        (!filters.watched || watchTargets(settings, card.id).length > 0);
     });
     return result.sort((a, b) => {
       let comparison = 0;
@@ -309,9 +353,10 @@
     async function patchSettings(id, changes) {
       if (!hasToken) throw new Error("A repository token is required to save settings.");
       if (!ID.test(id) || !object(changes) || !Object.keys(changes).length ||
-          Object.keys(changes).some(key => !["acquired", "notificationPriceCents"].includes(key)) ||
+          Object.keys(changes).some(key => !["acquired", "notificationPriceCents", "conditionWatches"].includes(key)) ||
           ("acquired" in changes && typeof changes.acquired !== "boolean") ||
-          ("notificationPriceCents" in changes && changes.notificationPriceCents !== null && !targetCents(changes.notificationPriceCents))) {
+          ("notificationPriceCents" in changes && changes.notificationPriceCents !== null && !targetCents(changes.notificationPriceCents)) ||
+          ("conditionWatches" in changes && (!validConditionWatches(changes.conditionWatches) || !Object.keys(changes.conditionWatches).length))) {
         throw new Error("Invalid card settings change.");
       }
       // A new SHA and document are read on every attempt, preserving concurrent edits.
@@ -330,6 +375,9 @@
           ...latest,
           cards: { ...latest.cards, [id]: { ...setting(latest, id), ...latest.cards[id], ...changes } }
         };
+        if ("conditionWatches" in changes)
+          next.cards[id].conditionWatches = { ...latest.cards[id]?.conditionWatches, ...changes.conditionWatches };
+        validateSettings(next);
         const body = { message: "Update CardTrader card settings", content: encodeContent(next), branch: config.branch };
         if (sha) body.sha = sha;
         try {
@@ -364,7 +412,8 @@
     return [...new Set(sources)];
   }
 
-  const api = { DEFAULT_BRANCH, emptySettings, validateSettings, validatePrices, setting, change24h, filterCards, binderPage, priceChanges, filterPriceChanges, checkRuns, filterCheckRuns, paginatePriceChanges, parseTarget,
+  const api = { DEFAULT_BRANCH, CONDITIONS, emptySettings, validateSettings, validatePrices, setting, watchThreshold, watchTargets,
+    conditionPrice, conditionSeries, change24h, filterCards, binderPage, priceChanges, filterPriceChanges, checkRuns, filterCheckRuns, paginatePriceChanges, parseTarget,
     validateConnection, createConnectionStore, encodeContent, decodeContent, createClient, imageSources };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.CardTraderData = Object.freeze(api);

@@ -27,6 +27,9 @@
   let imageSourceKey = null;
   let focusCardOnNavigation = false;
   let chartPoints = [];
+  let chartSeries = [];
+  let selectedConditions = new Set(["NM"]);
+  let watchCondition = "NM";
   let chartLayout = null;
   let chartActiveIndex = -1;
 
@@ -35,6 +38,8 @@
   const targetText = amount => amount === null ? "" : (amount / 100).toFixed(2);
   const canEdit = () => Boolean(state.client?.canEdit) && !state.loading && !state.busy && !state.connecting;
   const hasDrafts = () => state.drafts.size > 0;
+  const draftKey = (id, condition = watchCondition) => condition === "NM" ? id : `${id}|${condition}`;
+  const watchPatch = amount => watchCondition === "NM" ? { notificationPriceCents: amount } : { conditionWatches: { [watchCondition]: amount } };
   const signedPercent = value => value != null ? percentages.format(value / 100) : "\u2014";
   const compactSignedPercent = value => value != null && Math.abs(value) >= 10000
     ? `${compactPercentages.format(value)}%` : signedPercent(value);
@@ -85,9 +90,10 @@
     for (const card of cards) {
       const saved = D.setting(state.settings, card.id);
       if (!saved.acquired) missing += 1;
-      if (saved.notificationPriceCents !== null) {
+      for (const watch of D.watchTargets(state.settings, card.id)) {
         watched += 1;
-        if (!saved.acquired && card.available && card.currentPriceCents < saved.notificationPriceCents) atTarget += 1;
+        const price = D.conditionPrice(card, watch.code);
+        if (!saved.acquired && price.available && price.currentPriceCents < watch.thresholdCents) atTarget += 1;
       }
     }
     $("metric-total").textContent = cards.length.toLocaleString();
@@ -165,7 +171,7 @@
       const price = document.createElement("td");
       price.className = "numeric price" + (card.available ? "" : " unavailable");
       price.textContent = card.available ? formatMoney(card.currentPriceCents) : "Unavailable";
-      if (!card.available) price.title = `Last seen ${formatDate(card.lastSeenAt)} at ${formatMoney(card.currentPriceCents)}`;
+      if (!card.available) price.title = D.conditionPrice(card).lastSeenAt ? `NM last seen ${formatDate(card.lastSeenAt)} at ${formatMoney(card.currentPriceCents)}` : "No NM listing observed";
       const drop = D.change24h(card, state.prices.lastCheckedAt);
       const mobilePercent = document.createElement("span");
       mobilePercent.className = "mobile-drop-percent " + (drop?.percent == null || drop.percent === 0 ? "muted" : drop.percent > 0 ? "positive" : "negative");
@@ -189,7 +195,36 @@
         watch.textContent = formatMoney(saved.notificationPriceCents);
         watch.classList.toggle("at-target", card.available && !saved.acquired && card.currentPriceCents < saved.notificationPriceCents);
       }
-      row.append(acquired, titleCell, price, dropCell, watch);
+      row.append(acquired, titleCell, price);
+      for (const condition of D.CONDITIONS.slice(1)) {
+        const quote = D.conditionPrice(card, condition.code);
+        const cell = document.createElement("td");
+        cell.className = "numeric condition-column";
+        cell.dataset.condition = condition.code;
+        const value = document.createElement("button");
+        value.type = "button";
+        value.className = "condition-value" + (quote.available ? "" : " muted");
+        value.textContent = quote.available ? formatMoney(quote.currentPriceCents) : "\u2014";
+        value.title = `${condition.name}: ${quote.available ? formatMoney(quote.currentPriceCents) : quote.lastSeenAt ? `last seen ${formatDate(quote.lastSeenAt)} at ${formatMoney(quote.currentPriceCents)}` : quote.checked ? "no eligible listing returned" : "not checked yet"}`;
+        value.setAttribute("aria-label", `${condition.code} history: ${card.name}`);
+        value.addEventListener("click", () => {
+          selectedConditions = new Set([condition.code]);
+          watchCondition = condition.code;
+          selectCard(card.id, true);
+        });
+        cell.append(value);
+        const threshold = D.watchThreshold(state.settings, card.id, condition.code);
+        if (threshold !== null) {
+          const target = document.createElement("span");
+          target.className = "condition-watch";
+          target.classList.toggle("at-target", quote.available && !saved.acquired && quote.currentPriceCents < threshold);
+          target.title = `${condition.code} watch: ${formatMoney(threshold)}`;
+          target.append(icon("bell"), document.createTextNode(formatMoney(threshold)));
+          cell.append(target);
+        }
+        row.append(cell);
+      }
+      row.append(dropCell, watch);
       fragment.append(row);
     }
     $("cards-body").replaceChildren(fragment);
@@ -234,11 +269,13 @@
     chartLayout = null;
     chartActiveIndex = -1;
     $("chart-tooltip").hidden = true;
-    chartPoints = [...card.history].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+    chartSeries = D.conditionSeries(card, selectedConditions);
+    chartPoints = chartSeries.flatMap(series => series.points).sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
     $("history-range").textContent = `${chartPoints.length} ${chartPoints.length === 1 ? "point" : "points"}`;
     $("chart-start").textContent = chartPoints.length ? shortDate.format(new Date(chartPoints[0].at)) : "";
     $("chart-end").textContent = chartPoints.length ? shortDate.format(new Date(chartPoints[chartPoints.length - 1].at)) : "";
     $("chart-empty").hidden = chartPoints.length > 0;
+    $("chart-empty").textContent = selectedConditions.size ? "No history for selected conditions" : "No conditions selected";
     const historyBody = document.createDocumentFragment();
     for (const point of chartPoints.slice(-100).reverse()) {
       const row = document.createElement("tr");
@@ -247,12 +284,16 @@
       const amount = document.createElement("td");
       amount.className = "numeric";
       amount.textContent = formatMoney(point.priceCents);
-      row.append(at, amount);
+      const grade = document.createElement("td");
+      grade.className = "history-grade";
+      grade.style.color = point.color;
+      grade.textContent = point.condition;
+      row.append(at, grade, amount);
       historyBody.append(row);
     }
     $("history-body").replaceChildren(historyBody);
     $("history-chart").setAttribute("aria-label", chartPoints.length ?
-      `${card.name} price history: ${chartPoints.length} points, ${formatMoney(chartPoints[0].priceCents)} to ${formatMoney(chartPoints[chartPoints.length - 1].priceCents)}. History data follows.` : "No price history available");
+      `${card.name} ${[...selectedConditions].join(", ")} price history: ${chartPoints.length} points, ${formatMoney(chartPoints[0].priceCents)} to ${formatMoney(chartPoints[chartPoints.length - 1].priceCents)}. History data follows.` : "No price history available");
     $("history-chart").tabIndex = chartPoints.length ? 0 : -1;
     requestAnimationFrame(drawChart);
   }
@@ -263,13 +304,13 @@
     if (!state.selected || $("detail-content").hidden) return;
     const width = canvas.clientWidth;
     if (!width) return;
-    const height = 130;
+    const height = 170;
     const ratio = Math.min(window.devicePixelRatio || 1, 3);
     canvas.width = Math.round(width * ratio);
     canvas.height = height * ratio;
     const ctx = canvas.getContext("2d");
     ctx.scale(ratio, ratio);
-    const left = 4, right = width - 5, top = 22, bottom = 121;
+    const left = 4, right = width - 5, top = 22, bottom = 161;
     ctx.strokeStyle = "#dfe7e1";
     ctx.lineWidth = 1;
     for (let i = 0; i <= 2; i += 1) { const y = top + (bottom - top) * i / 2; ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke(); }
@@ -281,15 +322,21 @@
     const first = Date.parse(chartPoints[0].at), last = Date.parse(chartPoints[chartPoints.length - 1].at);
     const x = point => first === last ? (left + right) / 2 : left + (Date.parse(point.at) - first) / (last - first) * (right - left);
     const y = point => bottom - (point.priceCents - min) / (max - min) * (bottom - top);
-    chartLayout = { first, last, left, right, width };
-    ctx.beginPath();
-    chartPoints.forEach((point, index) => index ? ctx.lineTo(x(point), y(point)) : ctx.moveTo(x(point), y(point)));
-    ctx.strokeStyle = "#087b57";
-    ctx.lineWidth = 2;
-    ctx.lineJoin = "round";
-    ctx.stroke();
-    const final = chartPoints[chartPoints.length - 1];
-    ctx.beginPath(); ctx.arc(x(final), y(final), 3, 0, Math.PI * 2); ctx.fillStyle = "#087b57"; ctx.fill();
+    chartLayout = { first, last, left, right, width, x, y };
+    for (const series of chartSeries) {
+      ctx.beginPath();
+      series.points.forEach((point, index) => index ? ctx.lineTo(x(point), y(point)) : ctx.moveTo(x(point), y(point)));
+      ctx.strokeStyle = series.color;
+      ctx.lineWidth = 2;
+      ctx.lineJoin = "round";
+      ctx.setLineDash(series.dash);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = series.color;
+      for (const point of series.points) {
+        ctx.beginPath(); ctx.arc(x(point), y(point), 2.5, 0, Math.PI * 2); ctx.fill();
+      }
+    }
     ctx.font = "10px Segoe UI, sans-serif";
     ctx.fillStyle = "#718078";
     ctx.textAlign = "left";
@@ -299,9 +346,11 @@
       ctx.beginPath(); ctx.moveTo(x(active), top); ctx.lineTo(x(active), bottom);
       ctx.strokeStyle = "#93b4a2"; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.stroke(); ctx.setLineDash([]);
       ctx.beginPath(); ctx.arc(x(active), y(active), 4, 0, Math.PI * 2);
-      ctx.fillStyle = "#087b57"; ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
+      ctx.fillStyle = active.color; ctx.fill(); ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke();
       const tooltip = $("chart-tooltip");
       $("chart-tooltip-price").textContent = formatMoney(active.priceCents);
+      $("chart-tooltip-condition").textContent = active.condition;
+      $("chart-tooltip-condition").style.color = active.color;
       $("chart-tooltip-date").textContent = formatDate(active.at);
       tooltip.hidden = false;
       tooltip.style.left = `${Math.max(4, Math.min(width - tooltip.offsetWidth - 4, x(active) - tooltip.offsetWidth / 2))}px`;
@@ -313,16 +362,21 @@
   function inspectChart(event) {
     if (!chartLayout || !chartPoints.length) return;
     const bounds = $("history-chart").getBoundingClientRect();
-    const { first, last, left, right, width } = chartLayout;
+    const { first, last, left, right, width, x, y } = chartLayout;
     const pointerX = (event.clientX - bounds.left) * width / bounds.width;
     const at = first + Math.max(0, Math.min(1, (pointerX - left) / (right - left))) * (last - first);
-    let low = 0, high = chartPoints.length - 1;
-    while (low < high) {
-      const middle = Math.floor((low + high) / 2);
-      if (Date.parse(chartPoints[middle].at) < at) low = middle + 1;
-      else high = middle;
-    }
-    const index = low > 0 && at - Date.parse(chartPoints[low - 1].at) <= Date.parse(chartPoints[low].at) - at ? low - 1 : low;
+    const candidates = chartSeries.filter(series => series.points.length).map(series => {
+      let low = 0, high = series.points.length - 1;
+      while (low < high) {
+        const middle = Math.floor((low + high) / 2);
+        if (Date.parse(series.points[middle].at) < at) low = middle + 1;
+        else high = middle;
+      }
+      return low > 0 && at - Date.parse(series.points[low - 1].at) <= Date.parse(series.points[low].at) - at ? series.points[low - 1] : series.points[low];
+    });
+    const pointerY = event.clientY - bounds.top;
+    const nearest = candidates.reduce((best, point) => !best || Math.hypot(x(point) - pointerX, y(point) - pointerY) < Math.hypot(x(best) - pointerX, y(best) - pointerY) ? point : best, null);
+    const index = chartPoints.indexOf(nearest);
     if (index !== chartActiveIndex) showChartPoint(index);
   }
 
@@ -340,13 +394,68 @@
   }
 
   function renderTarget(card) {
-    const saved = D.setting(state.settings, card.id);
-    $("target-price").value = state.drafts.has(card.id) ? state.drafts.get(card.id) : targetText(saved.notificationPriceCents);
+    const threshold = D.watchThreshold(state.settings, card.id, watchCondition);
+    const key = draftKey(card.id);
+    $("watch-condition").value = watchCondition;
+    $("watch-condition").disabled = state.busy || state.loading || state.connecting;
+    $("watch-price-label").textContent = `${watchCondition} watch price (EUR)`;
+    $("clear-target").title = `Clear ${watchCondition} price watch`;
+    $("clear-target").setAttribute("aria-label", $("clear-target").title);
+    $("target-price").value = state.drafts.has(key) ? state.drafts.get(key) : targetText(threshold);
     $("target-price").disabled = !canEdit();
     $("target-error").hidden = true;
-    $("draft-status").textContent = state.drafts.has(card.id) ? "Unsaved" : "";
-    $("save-target").disabled = !canEdit() || !state.drafts.has(card.id);
-    $("clear-target").disabled = !canEdit() || (saved.notificationPriceCents === null && !state.drafts.has(card.id));
+    $("draft-status").textContent = state.drafts.has(key) ? "Unsaved" : "";
+    $("save-target").disabled = !canEdit() || !state.drafts.has(key);
+    $("clear-target").disabled = !canEdit() || (threshold === null && !state.drafts.has(key));
+  }
+
+  function renderConditions(card) {
+    const rows = document.createDocumentFragment();
+    for (const condition of D.CONDITIONS) {
+      const price = D.conditionPrice(card, condition.code);
+      const threshold = D.watchThreshold(state.settings, card.id, condition.code);
+      const row = document.createElement("div");
+      row.className = "condition-price-row";
+      row.style.setProperty("--grade-color", condition.color);
+      const label = document.createElement("label");
+      label.className = "condition-price-label";
+      label.title = condition.name;
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.dataset.condition = condition.code;
+      checkbox.checked = selectedConditions.has(condition.code);
+      checkbox.setAttribute("aria-label", `${condition.code} history`);
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) selectedConditions.add(condition.code); else selectedConditions.delete(condition.code);
+        renderHistory(card);
+      });
+      const code = document.createElement("span");
+      code.className = "condition-code";
+      code.textContent = condition.code;
+      const amount = document.createElement("span");
+      amount.className = "condition-amount" + (price.available ? "" : " muted");
+      amount.textContent = price.available ? formatMoney(price.currentPriceCents) : "\u2014";
+      amount.title = price.available ? `Cheapest returned ${condition.name} listing` : price.lastSeenAt ? `Last seen ${formatDate(price.lastSeenAt)} at ${formatMoney(price.currentPriceCents)}` : price.checked ? "No eligible listing returned" : "Not checked yet";
+      label.append(checkbox, code, amount);
+      const watch = document.createElement("button");
+      watch.type = "button";
+      watch.className = "condition-watch-button" + (threshold !== null ? " has-watch" : "");
+      watch.dataset.condition = condition.code;
+      watch.title = `${condition.code} watch${threshold !== null ? `: ${formatMoney(threshold)}` : ""}`;
+      watch.setAttribute("aria-label", `Edit ${condition.code} watch`);
+      watch.disabled = state.busy || state.loading || state.connecting;
+      watch.append(icon("bell"));
+      if (threshold !== null) watch.append(document.createTextNode(formatMoney(threshold)));
+      watch.addEventListener("click", () => {
+        watchCondition = condition.code;
+        renderTarget(card);
+        $("watch-form").scrollIntoView({ block: "nearest", behavior: "instant" });
+        $("target-price").focus({ preventScroll: true });
+      });
+      row.append(label, watch);
+      rows.append(row);
+    }
+    $("condition-prices").replaceChildren(rows);
   }
 
   function renderDetail() {
@@ -356,9 +465,12 @@
     if (!card) {
       imageSourceKey = null;
       chartPoints = [];
+      chartSeries = [];
       chartLayout = null;
       chartActiveIndex = -1;
       $("chart-tooltip").hidden = true;
+      $("condition-prices").replaceChildren();
+      $("history-body").replaceChildren();
       $("card-image").removeAttribute("src");
       $("cardtrader-link").removeAttribute("href");
       return;
@@ -382,11 +494,12 @@
     $("detail-acquired").disabled = !canEdit();
     $("detail-acquired-status").textContent = state.busy ? "Saving..." : saved.acquired ? "In collection" : "Missing";
     $("read-only-note").hidden = Boolean(state.client?.canEdit);
-    $("last-seen").textContent = `Last seen ${formatDate(card.lastSeenAt)}${card.available ? "" : ` / ${formatMoney(card.currentPriceCents)}`}`;
+    $("last-seen").textContent = D.conditionPrice(card).lastSeenAt ? `NM last seen ${formatDate(card.lastSeenAt)}${card.available ? "" : ` / ${formatMoney(card.currentPriceCents)}`}` : "No NM listing observed";
     const index = state.visible.findIndex(item => item.id === card.id);
     $("previous-card").disabled = index <= 0;
     $("next-card").disabled = index < 0 || index >= state.visible.length - 1;
     renderImage(card);
+    renderConditions(card);
     renderHistory(card);
     renderTarget(card);
   }
@@ -714,6 +827,7 @@
       if (session !== state.session) return;
       state.settings = settings;
       if ("notificationPriceCents" in patch) state.drafts.delete(id);
+      for (const condition of Object.keys(patch.conditionWatches || {})) state.drafts.delete(draftKey(id, condition));
       notice("Settings saved.");
     } catch (error) {
       if (session === state.session) notice(error.message, "error");
@@ -929,25 +1043,32 @@
     });
   }
   $("detail-acquired").addEventListener("change", event => { if (state.selected) saveCard(state.selected, { acquired: event.target.checked }); });
+  $("watch-condition").addEventListener("change", event => {
+    watchCondition = event.target.value;
+    const card = state.prices?.cards.find(item => item.id === state.selected);
+    if (card) renderTarget(card);
+  });
   $("target-price").addEventListener("input", event => {
     if (!state.selected || !canEdit()) return;
     const value = event.target.value;
     let matchesSaved = false;
-    try { matchesSaved = D.parseTarget(value) === D.setting(state.settings, state.selected).notificationPriceCents; } catch (_) { /* Invalid drafts remain editable. */ }
-    if (matchesSaved) state.drafts.delete(state.selected); else state.drafts.set(state.selected, value);
+    const key = draftKey(state.selected);
+    const threshold = D.watchThreshold(state.settings, state.selected, watchCondition);
+    try { matchesSaved = D.parseTarget(value) === threshold; } catch (_) { /* Invalid drafts remain editable. */ }
+    if (matchesSaved) state.drafts.delete(key); else state.drafts.set(key, value);
     $("target-error").hidden = true;
-    $("draft-status").textContent = state.drafts.has(state.selected) ? "Unsaved" : "";
-    $("save-target").disabled = !state.drafts.has(state.selected);
-    $("clear-target").disabled = !value && D.setting(state.settings, state.selected).notificationPriceCents === null;
+    $("draft-status").textContent = state.drafts.has(key) ? "Unsaved" : "";
+    $("save-target").disabled = !state.drafts.has(key);
+    $("clear-target").disabled = !value && threshold === null;
     updateControls();
   });
   $("watch-form").addEventListener("submit", event => {
     event.preventDefault();
     if (!state.selected || !canEdit()) return;
-    try { saveCard(state.selected, { notificationPriceCents: D.parseTarget($("target-price").value) }); }
+    try { saveCard(state.selected, watchPatch(D.parseTarget($("target-price").value))); }
     catch (error) { $("target-error").textContent = error.message; $("target-error").hidden = false; $("target-price").focus(); }
   });
-  $("clear-target").addEventListener("click", () => { if (state.selected && canEdit()) saveCard(state.selected, { notificationPriceCents: null }); });
+  $("clear-target").addEventListener("click", () => { if (state.selected && canEdit()) saveCard(state.selected, watchPatch(null)); });
   $("export-button").addEventListener("click", () => {
     const url = URL.createObjectURL(new Blob([JSON.stringify(state.settings, null, 2) + "\n"], { type: "application/json" }));
     const anchor = document.createElement("a");
