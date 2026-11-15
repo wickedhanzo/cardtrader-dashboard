@@ -17,3 +17,7 @@ The token stays in browser memory by default. Select **Remember on this device**
 Treat write access to this public website repository as trusted: its maintainers control the JavaScript served to your browser. Do not give other people write access. You may also open `site/index.html` locally.
 
 The Binder view shows expansions in collector-number order across nine-pocket sheets. Acquired cards use full-color exact artwork; missing cards are grayscale. Search, finish and ownership filters, completion counts, paging and acquired checkboxes share the existing connection. Card images open the collection detail view.
+
+US flags mark the collection's English targets; Japanese flags mark verified Japanese-only printings, including Black Chocobo and the FamilyMart promo tokens. Multilingual promos such as Swords to Plowshares still target English. These flags describe the selected language, not the seller's country.
+
+Overview and detail also show the free daily **Cardmarket general guide**, covering all languages and conditions, with the guide date and separate normal/foil figures. These are not English-specific quotes and never drive CardTrader watches or NM changes. Product links use exact provider IDs and apply the card's English/Japanese and foil filters. Multiple mapped product IDs remain separate references rather than being guessed or averaged. A dash means no quote. Language flag SVGs are from [flag-icons](https://github.com/lipis/flag-icons), with their MIT license in `site/flags/LICENSE.txt`.

@@ -86,6 +86,24 @@ th.numeric { width: 96px; }
 .card-title { display: block; padding: 0; font-size: 13px; font-weight: 600; text-align: left; background: transparent; color: #26342c; max-width: 100%; overflow-wrap: anywhere; }
 .card-row.selected .card-title { color: #086a4a; }
 .card-meta { display: block; font-size: 10px; color: var(--muted); margin-top: 3px; overflow-wrap: anywhere; }
+.language-flag { display: inline-block; width: 20px; height: 14px; object-fit: contain; vertical-align: middle; flex: 0 0 20px; }
+.language-badge { display: inline-flex; align-items: center; gap: 5px; }
+.cardmarket-column-note { display: block; font-size: 9px; font-weight: 400; }
+.cardmarket-cell { white-space: normal; }
+.cardmarket-reference { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.cardmarket-reference + .cardmarket-reference { margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line); }
+.cardmarket-trend { font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; max-width: 100%; }
+.cardmarket-link { display: inline-flex; align-items: center; gap: 4px; color: #1976ad; font-size: 11px; text-underline-offset: 3px; overflow-wrap: anywhere; max-width: 100%; }
+.cardmarket-link .icon { width: 12px; height: 12px; flex-basis: 12px; }
+.cardmarket-section { border-top: 1px solid var(--line); padding: 15px 0; }
+.cardmarket-section h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.cardmarket-guide-scope { margin: 4px 0 10px; font-size: 11px; font-weight: 600; color: #526b7a; }
+.cardmarket-link-filters { margin: 0 0 8px; font-size: 11px; color: var(--muted); }
+.cardmarket-guide-entry + .cardmarket-guide-entry { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 10px; }
+.cardmarket-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; margin: 8px 0; }
+.cardmarket-metrics dt { font-size: 10px; color: var(--muted); }
+.cardmarket-metrics dd { margin: 2px 0 0; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.cardmarket-updated, .cardmarket-unmapped { font-size: 10px; color: var(--muted); margin: 6px 0 0; overflow-wrap: anywhere; }
 .price { font-weight: 600; }
 .price.unavailable { color: var(--muted); font-weight: 400; font-size: 10px; white-space: normal; }
 .drop-percent { font-size: 10px; display: block; margin-top: 1px; }
@@ -147,11 +165,12 @@ th.numeric { width: 96px; }
 .grade-hp { --grade-color: #b64770; }
 .grade-po { --grade-color: #8756a0; }
 .grade-m { --grade-color: #557c39; }
-#cards-table { min-width: 1000px; }
+#cards-table { min-width: 1120px; }
 #cards-table .card-column { width: 220px; }
 #cards-table .condition-column { width: 76px; padding-left: 6px; padding-right: 6px; }
 #cards-table .nm-column { width: 98px; }
 #cards-table .nm-watch-column { width: 90px; }
+#cards-table .cardmarket-column { width: 120px; }
 #cards-table .acquired-cell, #cards-table td:nth-child(2), #cards-table .card-column { position: sticky; background: inherit; z-index: 1; }
 #cards-table .acquired-cell { left: 0; }
 #cards-table td:nth-child(2), #cards-table .card-column { left: 37px; box-shadow: 1px 0 var(--line); }
@@ -265,7 +284,7 @@ dialog .remember-choice input { width: 16px; }
 @media (max-width: 600px) { .topbar { padding: 13px 16px; min-height: 71px; } .brand { font-size: 18px; gap: 8px; } .brand-mark { width: 34px; height: 38px; } .brand-caption { font-size: 8px; } .topbar-actions { gap: 2px; } #connect-button { max-width: 165px; font-size: 11px; gap: 5px; padding: 6px 8px; } #access-badge { display: none; } .main { padding: 23px 16px 0; } h1 { font-size: 25px; } .connection-line { font-size: 10px; } #repository-label { max-width: 100%; overflow-wrap: anywhere; } .last-checked { border: 0; padding: 0; margin: 0 0 0 13px; flex-basis: 100%; } .metrics { padding: 20px 0; gap: 0; } .metric { padding: 0 10px; } .metric > span { font-size: 10px; } .metric strong { font-size: 23px; } .filters { grid-template-columns: 1fr 1fr; } .search-field { grid-column: 1 / -1; } .sort-field { grid-column: auto; } .filter-secondary { gap: 12px; } .segments button { padding: 4px 9px; font-size: 11px; } .watched-filter { font-size: 11px; gap: 5px; } .result-count { font-size: 10px; } table { font-size: 11px; } th, td { padding-left: 7px; padding-right: 7px; } th.numeric { width: 75px; } .card-title { font-size: 12px; } .card-meta { font-size: 9px; } th.acquired-cell, td.acquired-cell { width: 28px; padding-left: 2px; padding-right: 4px; } .change-column { display: none; } .empty-state { min-height: 300px; } .repo-fields { grid-template-columns: 1fr; gap: 12px; } dialog { padding: 20px; } .card-art { height: 250px; } }
 @media (max-width: 360px) { .topbar { padding-left: 12px; padding-right: 12px; } .brand-mark { display: none; } #connect-button { max-width: 145px; } .main { padding-left: 12px; padding-right: 12px; } .filter-secondary { gap: 9px; } .result-count { width: 100%; text-align: right; } th.numeric { width: 68px; } }
 @media (prefers-reduced-motion: reduce) { .spinning { animation: none; } }
-@media (max-width: 600px) { #cards-table { min-width: 895px; } #cards-table .card-column { width: 145px; } #cards-table td:nth-child(2), #cards-table .card-column { left: 28px; } #cards-table .nm-column { width: 82px; } #cards-table .condition-column { width: 74px; } }
+@media (max-width: 600px) { #cards-table { min-width: 1015px; } #cards-table .card-column { width: 145px; } #cards-table td:nth-child(2), #cards-table .card-column { left: 28px; } #cards-table .nm-column { width: 82px; } #cards-table .condition-column { width: 74px; } }
 @media (max-width: 600px) { .mobile-drop-percent { display: block; font-size: 10px; font-weight: 400; margin-top: 3px; } .mobile-price-period { display: inline; } }
 @media (max-width: 600px) { .view-navigation { gap: 20px; } .view-navigation a { font-size: 12px; } .changes-filters { grid-template-columns: 1fr; } #changes-table .changed-date, #changes-table .previous-price { display: none; } .mobile-change-date { display: block; margin-top: 5px; } .changes-footer { justify-content: center; } #changes-range { width: 100%; text-align: center; font-size: 11px; } }
 @media (max-width: 740px) { .binder-spread { max-width: 520px; padding: 10px; } .binder-pages { grid-template-columns: minmax(0, 1fr); gap: 18px; } .binder-spine, .binder-sheet-empty { display: none; } }

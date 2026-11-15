@@ -34,6 +34,7 @@
   let chartActiveIndex = -1;
 
   const formatMoney = amount => money.format(amount / 100);
+  const referenceMoney = amount => amount > 0 ? formatMoney(amount) : "\u2014";
   const formatDate = at => at ? dates.format(new Date(at)) : "Never";
   const targetText = amount => amount === null ? "" : (amount / 100).toFixed(2);
   const canEdit = () => Boolean(state.client?.canEdit) && !state.loading && !state.busy && !state.connecting;
@@ -52,6 +53,90 @@
     element.alt = "";
     element.className = "icon";
     return element;
+  }
+
+  function languageFlag(card) {
+    const language = D.cardLanguageInfo(card);
+    const image = document.createElement("img");
+    image.className = "language-flag";
+    image.src = language.flag;
+    image.alt = image.title = language.name;
+    image.width = 20;
+    image.height = 14;
+    return image;
+  }
+
+  function cardmarketLink(card, reference) {
+    const link = document.createElement(reference.url ? "a" : "span");
+    link.className = "cardmarket-link";
+    link.textContent = `#${reference.productId}`;
+    if (reference.url) {
+      link.href = reference.url;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.title = `Cardmarket #${reference.productId}: ${D.cardLanguageInfo(card).name}, ${card.isFoil ? "foil" : "non-foil"} listings (opens in a new tab)`;
+      link.setAttribute("aria-label", link.title);
+      link.append(icon("link"));
+    }
+    return link;
+  }
+
+  function cardmarketCell(card) {
+    const cell = document.createElement("td");
+    cell.className = "numeric cardmarket-cell";
+    const references = D.cardmarketReferences(card);
+    cell.title = "Cardmarket general daily trend: all languages and all conditions";
+    if (!references.length) {
+      cell.textContent = "\u2014";
+      cell.classList.add("muted");
+      cell.title = "No exact Cardmarket product mapping";
+    }
+    for (const reference of references) {
+      const entry = document.createElement("div");
+      entry.className = "cardmarket-reference";
+      entry.dataset.productId = reference.productId;
+      const amount = document.createElement("span");
+      amount.className = "cardmarket-trend" + (reference.quote?.trendCents > 0 ? "" : " muted");
+      amount.textContent = referenceMoney(reference.quote?.trendCents);
+      amount.title = `General trend / #${reference.productId}${reference.quote ? ` / ${formatDate(reference.quote.updatedAt)}` : " / No guide quote available"}`;
+      entry.append(cardmarketLink(card, reference), amount);
+      cell.append(entry);
+    }
+    return cell;
+  }
+
+  function renderCardmarket(card) {
+    const references = D.cardmarketReferences(card);
+    const entries = document.createDocumentFragment();
+    for (const reference of references) {
+      const entry = document.createElement("div");
+      entry.className = "cardmarket-guide-entry";
+      entry.dataset.productId = reference.productId;
+      entry.append(cardmarketLink(card, reference));
+      const metrics = document.createElement("dl");
+      metrics.className = "cardmarket-metrics";
+      for (const [key, label] of [["trendCents", "Trend"], ["lowCents", "Low"], ["average7Cents", "7d avg"], ["average30Cents", "30d avg"]]) {
+        const metric = document.createElement("div");
+        const name = document.createElement("dt");
+        name.textContent = label;
+        const amount = document.createElement("dd");
+        amount.dataset.metric = key;
+        amount.textContent = referenceMoney(reference.quote?.[key]);
+        amount.classList.toggle("muted", !(reference.quote?.[key] > 0));
+        metric.append(name, amount);
+        metrics.append(metric);
+      }
+      const updated = document.createElement("p");
+      updated.className = "cardmarket-updated";
+      updated.textContent = reference.quote ? `Guide date: ${formatDate(reference.quote.updatedAt)}` : "No guide quote available";
+      entry.append(metrics, updated);
+      entries.append(entry);
+    }
+    $("cardmarket-references").replaceChildren(entries);
+    $("cardmarket-unmapped").hidden = references.length > 0;
+    $("cardmarket-link-filters").hidden = !references.length;
+    $("cardmarket-link-filters").textContent = `Listings: ${D.cardLanguageInfo(card).name} / ${card.isFoil ? "Foil" : "Non-foil"}`;
+    $("cardmarket-checked-at").textContent = `Guide last checked: ${formatDate(state.prices.cardmarketCheckedAt)}`;
   }
 
   function notice(message, type) {
@@ -167,6 +252,7 @@
       const metadata = document.createElement("span");
       metadata.className = "card-meta";
       metadata.textContent = `${card.expansion} / #${card.collectorNumber}${card.isFoil ? " / Foil" : ""}`;
+      metadata.append(" ", languageFlag(card));
       titleCell.append(title, metadata);
       const price = document.createElement("td");
       price.className = "numeric price" + (card.available ? "" : " unavailable");
@@ -224,7 +310,7 @@
         }
         row.append(cell);
       }
-      row.append(dropCell, watch);
+      row.append(cardmarketCell(card), dropCell, watch);
       fragment.append(row);
     }
     $("cards-body").replaceChildren(fragment);
@@ -473,6 +559,8 @@
       $("history-body").replaceChildren();
       $("card-image").removeAttribute("src");
       $("cardtrader-link").removeAttribute("href");
+      $("detail-language").replaceChildren();
+      $("cardmarket-references").replaceChildren();
       return;
     }
     const saved = D.setting(state.settings, card.id);
@@ -482,6 +570,7 @@
     $("detail-rarity").textContent = card.rarity || "Unknown rarity";
     $("detail-finish").textContent = card.isFoil ? "Foil" : "Normal";
     $("detail-blueprint").textContent = `ID ${card.blueprintId}`;
+    $("detail-language").replaceChildren(languageFlag(card), document.createTextNode(`CardTrader: ${D.cardLanguageInfo(card).name}`));
     $("cardtrader-link").href = `https://www.cardtrader.com/en/cards/${card.blueprintId}`;
     $("detail-price").textContent = card.available ? formatMoney(card.currentPriceCents) : "Unavailable";
     $("detail-price").className = card.available ? "" : "unavailable";
@@ -499,6 +588,7 @@
     $("previous-card").disabled = index <= 0;
     $("next-card").disabled = index < 0 || index >= state.visible.length - 1;
     renderImage(card);
+    renderCardmarket(card);
     renderConditions(card);
     renderHistory(card);
     renderTarget(card);
@@ -592,6 +682,7 @@
           const collector = document.createElement("span");
           collector.textContent = `#${card.collectorNumber}`;
           collector.title = `Collector number ${card.collectorNumber}`;
+          collector.append(" ", languageFlag(card));
           const finish = document.createElement("span");
           finish.textContent = card.isFoil ? "Foil" : "Normal";
           const checkbox = document.createElement("input");

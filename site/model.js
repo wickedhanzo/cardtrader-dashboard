@@ -17,6 +17,15 @@
   const cents = value => Number.isSafeInteger(value) && value >= 0;
   const targetCents = value => cents(value) && value <= 2147483647;
   const date = value => typeof value === "string" && /^\d{4}-\d{2}-\d{2}T/.test(value) && Number.isFinite(Date.parse(value));
+  const referenceDate = value => date(value) &&
+    /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(value) &&
+    new Date(`${value.slice(0, 10)}T00:00:00Z`).toISOString().slice(0, 10) === value.slice(0, 10);
+  const cardmarketId = value => targetCents(value) && value > 0;
+  const CARDMARKET_METRICS = ["trendCents", "lowCents", "average7Cents", "average30Cents"];
+  const LANGUAGES = Object.freeze({
+    en: Object.freeze({ name: "English", flag: "flags/us.svg", cardmarket: "1" }),
+    ja: Object.freeze({ name: "Japanese", flag: "flags/jp.svg", cardmarket: "7" })
+  });
   const emptySettings = () => ({ schemaVersion: 1, cards: {} });
   const validConditionWatches = watches => object(watches) && Object.entries(watches).every(([code, amount]) =>
     secondaryCondition(code) && (amount === null || targetCents(amount)));
@@ -40,6 +49,8 @@
     if (!object(value) || value.schemaVersion !== 1 || (value.lastCheckedAt !== null && !date(value.lastCheckedAt)) || !Array.isArray(value.cards)) {
       throw new Error("prices.json must have schemaVersion 1, lastCheckedAt, and a cards array.");
     }
+    if (value.cardmarketCheckedAt != null && !referenceDate(value.cardmarketCheckedAt))
+      throw new Error("prices.json contains an invalid Cardmarket check timestamp.");
     const seen = new Set();
     for (const card of value.cards) {
       if (!object(card) || !ID.test(card.id) || seen.has(card.id) || !cents(card.blueprintId) || !cents(card.expansionId) ||
@@ -51,6 +62,16 @@
         throw new Error("prices.json contains an invalid or duplicate card. Check the worker output.");
       }
       seen.add(card.id);
+      if (!cardLanguage(card) || (card.metadataCheckedAt != null && !referenceDate(card.metadataCheckedAt)) ||
+          (card.cardmarketIds !== undefined && (!Array.isArray(card.cardmarketIds) ||
+            card.cardmarketIds.some(id => !cardmarketId(id)) || new Set(card.cardmarketIds).size !== card.cardmarketIds.length)) ||
+          (card.cardmarketQuotes !== undefined && (!Array.isArray(card.cardmarketQuotes) ||
+            card.cardmarketQuotes.some(quote => !object(quote) || !cardmarketId(quote.productId) ||
+              !card.cardmarketIds?.includes(quote.productId) || !referenceDate(quote.updatedAt) ||
+              !CARDMARKET_METRICS.every(key => quote[key] === null || targetCents(quote[key])) ||
+              (typeof quote.isFoil !== "boolean" || quote.isFoil !== card.isFoil)) ||
+            new Set(card.cardmarketQuotes.map(quote => quote.productId)).size !== card.cardmarketQuotes.length)))
+        throw new Error("prices.json contains invalid card language or Cardmarket references.");
       if ((card.conditionsCheckedAt != null && !date(card.conditionsCheckedAt)) ||
           (card.conditions !== undefined && (!object(card.conditions) || Object.entries(card.conditions).some(([code, price]) =>
             !secondaryCondition(code) || !object(price) || !cents(price.currentPriceCents) || typeof price.available !== "boolean" ||
@@ -75,6 +96,34 @@
       }
     }
     return value;
+  }
+
+  function cardLanguage(card) {
+    const language = card?.language === undefined ? "en" : card.language;
+    return language === "en" || language === "ja" ? language : null;
+  }
+
+  function cardLanguageInfo(card) {
+    return LANGUAGES[cardLanguage(card)] || null;
+  }
+
+  function cardmarketUrl(card, productId) {
+    const language = cardLanguageInfo(card);
+    if (!object(card) || !language || typeof card.isFoil !== "boolean" || !cardmarketId(productId) ||
+        !Array.isArray(card.cardmarketIds) || !card.cardmarketIds.includes(productId)) return null;
+    const url = new URL("https://www.cardmarket.com/en/Magic/Products");
+    url.searchParams.set("idProduct", String(productId));
+    url.searchParams.set("language", language.cardmarket);
+    url.searchParams.set("isFoil", card.isFoil ? "Y" : "N");
+    return url.href;
+  }
+
+  function cardmarketReferences(card) {
+    const quotes = Array.isArray(card?.cardmarketQuotes) ? card.cardmarketQuotes : [];
+    return (Array.isArray(card?.cardmarketIds) ? card.cardmarketIds : []).filter(cardmarketId).map(productId => ({
+      productId, url: cardmarketUrl(card, productId),
+      quote: quotes.find(quote => quote?.productId === productId && quote.isFoil === card.isFoil) || null
+    }));
   }
 
   function setting(settings, id) {
@@ -412,7 +461,8 @@
     return [...new Set(sources)];
   }
 
-  const api = { DEFAULT_BRANCH, CONDITIONS, emptySettings, validateSettings, validatePrices, setting, watchThreshold, watchTargets,
+  const api = { DEFAULT_BRANCH, CONDITIONS, emptySettings, validateSettings, validatePrices, cardLanguage, cardLanguageInfo,
+    cardmarketUrl, cardmarketReferences, setting, watchThreshold, watchTargets,
     conditionPrice, conditionSeries, change24h, filterCards, binderPage, priceChanges, filterPriceChanges, checkRuns, filterCheckRuns, paginatePriceChanges, parseTarget,
     validateConnection, createConnectionStore, encodeContent, decodeContent, createClient, imageSources };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
