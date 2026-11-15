@@ -334,8 +334,9 @@
   }
 
   function renderColumnVisibility() {
-    document.querySelectorAll("#cards-table th[data-grade-column]").forEach(header => {
-      header.hidden = !state.visibleGrades.has(header.dataset.gradeColumn);
+    document.querySelectorAll("#cards-table [data-grade-column]").forEach(cell => {
+      const hidden = !state.visibleGrades.has(cell.dataset.gradeColumn);
+      if (cell.hidden !== hidden) cell.hidden = hidden;
     });
     document.querySelectorAll("#grade-column-options input").forEach(input => {
       input.checked = state.visibleGrades.has(input.value);
@@ -349,7 +350,7 @@
 
   function setGradeColumns() {
     columnStore.save([...state.visibleGrades]);
-    renderTable();
+    renderColumnVisibility();
   }
 
   function initializeGradeColumns() {
