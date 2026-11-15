@@ -8,6 +8,8 @@ The 24-hour euro/percentage changes, Price changes feed and run update totals re
 
 Each expanded change group has independent signed percentage/EUR sorting, low or high first, across all matching entries before pagination; undefined percentages stay last. Recorded order remains available and the runs themselves stay newest first. Acquired/Missing badges and the acquired-status filter use each exact variant's current saved collection status. Ownership combines with the other filters, while original run totals are retained. Sort choices survive paging, collapse/reopen and in-session navigation. None of these controls write repository settings.
 
+**Check prices** manually starts the private checker's `check-prices.yml` workflow on its default branch. This optional control requires **Actions: read and write** on the dashboard's fine-grained token, restricted to that private repository, alongside the existing Contents permissions. Anonymous viewers cannot trigger it. API keys remain in the private Actions secrets. A currently queued/running checker is reused; the UI shows status and a link to its run. Successful completion refreshes state only when unsaved watch drafts and other active operations would not be interrupted. Browser polling stops after fifteen minutes, disconnect, a repository switch or leaving the page; it does not cancel the workflow. Manual checks consume normal Actions usage, can send configured alerts, and retain the existing Cardmarket daily-refresh rule and cron schedule.
+
 1. Push this folder to a new public GitHub repository with `main` as the default branch.
 2. Under **Settings > Pages > Build and deployment**, choose **GitHub Actions**.
 3. Run **Publish dashboard** under Actions, or push a change to `main`.

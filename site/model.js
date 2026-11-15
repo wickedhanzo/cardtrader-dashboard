@@ -443,6 +443,9 @@
     const base = `https://api.github.com/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}`;
     const controllers = new Set();
     const hasToken = Boolean(token);
+    const workflowPath = "/actions/workflows/check-prices.yml";
+    const workflowUrl = `https://github.com/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}/actions/workflows/check-prices.yml`;
+    let startingCheck = null;
 
     async function request(path, options) {
       if (disposed) throw new Error("Repository disconnected.");
@@ -452,7 +455,7 @@
       const opts = options || {};
       const headers = {
         Accept: opts.raw ? "application/vnd.github.raw+json" : "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28"
+        "X-GitHub-Api-Version": path.startsWith("/actions/") ? "2026-03-10" : "2022-11-28"
       };
       if (token) headers.Authorization = `Bearer ${token}`;
       if (opts.body) headers["Content-Type"] = "application/json";
@@ -463,18 +466,25 @@
         });
         if (disposed) throw new Error("Repository disconnected.");
         if (!response.ok) {
+          const actions = path.startsWith("/actions/");
+          const rateLimited = response.status === 429 || response.headers?.get("X-RateLimit-Remaining") === "0" || Boolean(response.headers?.get("Retry-After"));
           let message = `GitHub request failed (${response.status}).`;
           if (response.status === 401) message = "GitHub rejected the token. Reconnect with a valid token.";
-          if (response.status === 403 || response.status === 429) message = response.headers?.get("X-RateLimit-Remaining") === "0"
+          if (response.status === 403 || response.status === 429) message = rateLimited
             ? "GitHub's API rate limit was reached. Wait before refreshing."
-            : "GitHub denied access. Check token permissions, repository access, or API rate limits.";
-          if (response.status === 404) message = "Repository or state file not found. Check access and branch; the worker creates state after its first successful run.";
+            : actions ? "GitHub denied workflow access. The token needs Actions: read and write for the private checker repository."
+              : "GitHub denied access. Check token permissions, repository access, or API rate limits.";
+          if (response.status === 404) message = actions
+            ? "Check card prices workflow not found or inaccessible. Connect to the private checker repository and grant the token Actions: read and write."
+            : "Repository or state file not found. Check access and branch; the worker creates state after its first successful run.";
+          if (actions && response.status === 422) message = "GitHub could not start the price check. The default branch must contain an enabled check-prices.yml workflow with workflow_dispatch.";
           const error = new Error(message);
           error.status = response.status;
           throw error;
         }
+        if (response.status === 204) return null;
         try { return await response.json(); }
-        catch (_) { throw new Error("GitHub returned invalid JSON. Check the state files."); }
+        catch (_) { throw new Error(path.startsWith("/actions/") ? "GitHub returned invalid workflow JSON." : "GitHub returned invalid JSON. Check the state files."); }
       } catch (error) {
         if (error.name === "AbortError") throw new Error(disposed ? "Repository disconnected." : "GitHub took too long to respond. Try again.");
         if (error instanceof TypeError) throw new Error("Could not reach GitHub. Check your network connection and try again.");
@@ -494,6 +504,44 @@
       try { settings = validateSettings(await request(filePath("settings.json"), { raw: true })); }
       catch (error) { if (error.status !== 404) throw error; settings = emptySettings(); }
       return { prices, settings };
+    }
+
+    function priceCheckRun(value) {
+      if (!object(value) || !Number.isSafeInteger(value.id) || value.id <= 0 ||
+          !["requested", "queued", "pending", "waiting", "in_progress", "completed"].includes(value.status) ||
+          value.conclusion != null && typeof value.conclusion !== "string")
+        throw new Error("GitHub returned invalid price-check run details.");
+      return { id: value.id, status: value.status, conclusion: value.conclusion ?? null,
+        url: `https://github.com/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}/actions/runs/${value.id}` };
+    }
+
+    function startPriceCheck() {
+      if (!hasToken) return Promise.reject(new Error("A GitHub token with Actions: read and write is required to start a price check."));
+      if (startingCheck) return startingCheck;
+      startingCheck = (async () => {
+        const workflow = await request(workflowPath);
+        if (workflow?.state !== "active") throw new Error("The Check card prices workflow is disabled in GitHub.");
+        const recent = await request(`${workflowPath}/runs?per_page=20`);
+        if (!Array.isArray(recent?.workflow_runs)) throw new Error("GitHub returned invalid workflow run data.");
+        const active = recent.workflow_runs.find(run => ["requested", "queued", "pending", "waiting", "in_progress"].includes(run?.status));
+        if (active) return { ...priceCheckRun(active), reused: true };
+        const repository = await request("");
+        if (typeof repository?.default_branch !== "string" || !repository.default_branch.trim())
+          throw new Error("Cannot determine the checker repository's default branch.");
+        const dispatched = await request(`${workflowPath}/dispatches`, { method: "POST", body: { ref: repository.default_branch } });
+        // Older API responses can acknowledge a dispatch without returning its run ID.
+        if (!Number.isSafeInteger(dispatched?.workflow_run_id) || dispatched.workflow_run_id <= 0)
+          return { id: null, status: "requested", conclusion: null, url: workflowUrl, reused: false };
+        return { ...priceCheckRun({ id: dispatched.workflow_run_id, status: "queued" }), reused: false };
+      })().finally(() => { startingCheck = null; });
+      return startingCheck;
+    }
+
+    async function getPriceCheck(id) {
+      if (!Number.isSafeInteger(id) || id <= 0) throw new Error("Invalid price-check run ID.");
+      const run = priceCheckRun(await request(`/actions/runs/${id}`));
+      if (run.id !== id) throw new Error("GitHub returned a different price-check run.");
+      return run;
     }
 
     async function patchSettings(id, changes) {
@@ -537,7 +585,7 @@
     }
 
     return {
-      config, canEdit: hasToken, load, patchSettings,
+      config, canEdit: hasToken, load, patchSettings, startPriceCheck, getPriceCheck, workflowUrl,
       disconnect() {
         disposed = true;
         token = "";

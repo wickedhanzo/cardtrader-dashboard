@@ -26,7 +26,7 @@
     changeFilters: { search: "", expansion: "", direction: "all", ownership: "all", cardType: "all" }, changesPage: 1,
     expandedRuns: new Set(), runPages: new Map(), runSorts: new Map(),
     binderFilters: { search: "", expansion: "", ownership: "all", finish: "all", cardType: "all" }, binderPage: 1,
-    visibleGrades: new Set(columnStore.read())
+    visibleGrades: new Set(columnStore.read()), priceCheck: null, checkRequest: false
   };
   let imageSourceKey = null;
   let focusCardOnNavigation = false;
@@ -36,6 +36,7 @@
   let watchCondition = "NM";
   let chartLayout = null;
   let chartActiveIndex = -1;
+  let priceCheckTimer = null;
 
   const formatMoney = amount => money.format(amount / 100);
   const referenceMoney = amount => amount > 0 ? formatMoney(amount) : "\u2014";
@@ -184,6 +185,7 @@
   }
 
   function updateControls() {
+    renderPriceCheckControls();
     $("refresh-button").disabled = !state.client || state.loading || state.busy || state.connecting;
     $("export-button").disabled = !state.prices || state.loading || state.busy;
     $("connect-button").disabled = state.loading || state.busy || state.connecting;
@@ -1034,6 +1036,81 @@
     render();
   }
 
+  function stopPriceCheckMonitor() {
+    clearTimeout(priceCheckTimer);
+    priceCheckTimer = null;
+  }
+
+  function renderPriceCheckControls() {
+    const check = state.priceCheck;
+    const pending = state.checkRequest || Boolean(check?.monitoring);
+    const button = $("check-prices-button");
+    button.disabled = !state.client?.canEdit || state.loading || state.busy || state.connecting || pending;
+    button.setAttribute("aria-busy", String(pending));
+    button.title = !state.client?.canEdit ? "A connected GitHub token with Actions: read and write is required." :
+      pending ? "A price check is already requested or running." : "Run Check card prices in the connected private repository.";
+    const status = $("check-prices-status");
+    const labels = { requesting: "Requesting...", requested: "Requested", queued: "Queued", pending: "Pending", waiting: "Waiting", in_progress: "Running" };
+    const outcomes = { success: "Complete", failure: "Failed", cancelled: "Cancelled", timed_out: "Timed out", action_required: "Action required", skipped: "Skipped" };
+    status.hidden = !check;
+    status.textContent = !check ? "" : check.error || (check.status === "completed" ? outcomes[check.conclusion] || "Finished" :
+      `${check.reused ? "Existing check: " : ""}${labels[check.status] || "Pending"}`);
+    status.className = "price-check-status" + (check?.error || check?.status === "completed" && check.conclusion !== "success" ? " negative" :
+      check?.status === "completed" ? " positive" : " muted");
+    status.setAttribute("role", check?.error ? "alert" : "status");
+    const link = $("check-prices-run");
+    link.hidden = !check?.url;
+    if (check?.url) link.href = check.url; else link.removeAttribute("href");
+    $("check-prices-run-label").textContent = check?.id ? "View run" : "View workflow";
+  }
+
+  async function pollPriceCheck(check, client, session) {
+    const current = () => state.priceCheck === check && state.client === client && state.session === session;
+    try {
+      const run = await client.getPriceCheck(check.id);
+      if (!current()) return;
+      Object.assign(check, run);
+      if (run.status === "completed") {
+        check.monitoring = false;
+        renderPriceCheckControls();
+        if (run.conclusion === "success" && !hasDrafts() && !state.busy && !state.loading && !state.connecting) await refresh();
+        return;
+      }
+      if (Date.now() >= check.deadline) throw new Error("Status monitoring timed out.");
+      renderPriceCheckControls();
+      priceCheckTimer = setTimeout(() => pollPriceCheck(check, client, session), 10000);
+    } catch (error) {
+      if (!current()) return;
+      check.monitoring = false;
+      check.error = `Run status unavailable. ${error.message}`;
+      renderPriceCheckControls();
+    }
+  }
+
+  async function startPriceCheck() {
+    if (!state.client?.canEdit || state.loading || state.busy || state.connecting || state.checkRequest || state.priceCheck?.monitoring) return;
+    stopPriceCheckMonitor();
+    const client = state.client, session = state.session;
+    const check = { status: "requesting", id: null, url: client.workflowUrl, error: "", monitoring: false, deadline: Date.now() + 900000 };
+    state.priceCheck = check;
+    state.checkRequest = true;
+    renderPriceCheckControls();
+    try {
+      const run = await client.startPriceCheck();
+      if (state.session !== session || state.client !== client || state.priceCheck !== check) return;
+      Object.assign(check, run);
+      check.monitoring = Boolean(run.id) && run.status !== "completed";
+      if (check.monitoring) void pollPriceCheck(check, client, session);
+    } catch (error) {
+      if (state.session === session && state.priceCheck === check) check.error = error.message;
+    } finally {
+      if (state.session === session && state.priceCheck === check) {
+        state.checkRequest = false;
+        renderPriceCheckControls();
+      }
+    }
+  }
+
   async function refresh() {
     if (!state.client || state.loading || state.busy || state.connecting || !discardDrafts("refresh")) return;
     const client = state.client, session = state.session;
@@ -1118,6 +1195,9 @@
       const snapshot = await candidate.load();
       if (state.pendingClient !== candidate) return;
       state.client?.disconnect();
+      stopPriceCheckMonitor();
+      state.priceCheck = null;
+      state.checkRequest = false;
       state.client = candidate;
       state.session += 1;
       state.selected = null;
@@ -1158,9 +1238,13 @@
   $("cancel-connect").addEventListener("click", closeConnect);
   $("connect-button").addEventListener("click", openConnect);
   $("refresh-button").addEventListener("click", refresh);
+  $("check-prices-button").addEventListener("click", startPriceCheck);
   $("disconnect-button").addEventListener("click", () => {
     if (!discardDrafts("disconnect")) return;
     state.session += 1;
+    stopPriceCheckMonitor();
+    state.priceCheck = null;
+    state.checkRequest = false;
     state.client?.disconnect();
     state.client = null;
     state.prices = null;
@@ -1324,7 +1408,7 @@
     if (hasDrafts()) notice("Exported saved settings. Unsaved watch prices are not included.");
   });
   window.addEventListener("beforeunload", event => { if (hasDrafts() || state.busy) { event.preventDefault(); event.returnValue = ""; } });
-  window.addEventListener("pagehide", () => { state.client?.disconnect(); state.pendingClient?.disconnect(); $("repo-token").value = ""; });
+  window.addEventListener("pagehide", () => { state.session += 1; stopPriceCheckMonitor(); state.client?.disconnect(); state.pendingClient?.disconnect(); $("repo-token").value = ""; });
   window.addEventListener("pageshow", event => { if (event.persisted) window.location.reload(); });
   $("history-chart").addEventListener("pointermove", inspectChart);
   $("history-chart").addEventListener("pointerdown", inspectChart);

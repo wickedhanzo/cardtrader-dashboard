@@ -270,6 +270,10 @@ th.numeric { width: 96px; }
 .binder-spine { position: absolute; inset: 8% auto 8% calc(50% - 14px); width: 28px; display: flex; flex-direction: column; justify-content: space-around; pointer-events: none; }
 .binder-spine span { height: 10px; border: 2px solid #899b8f; border-radius: 5px; background: #d3dbd6; box-shadow: 0 2px 2px #1a2d2366; }
 .changes-filters { display: grid; grid-template-columns: minmax(0, 1fr) minmax(150px, 220px); gap: 10px; }
+.price-check-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.price-check-status { flex: 1 1 180px; min-width: 0; margin-right: auto; font-size: 12px; overflow-wrap: anywhere; }
+.price-check-run { display: inline-flex; align-items: center; gap: 5px; color: var(--green); font-size: 12px; text-underline-offset: 3px; }
+#check-prices-button { min-width: 140px; max-width: 100%; min-height: 38px; flex: 0 0 auto; }
 .changes-view .table-scroll { max-height: 60vh; overflow: auto; }
 #changes-table thead { position: sticky; top: 0; z-index: 1; }
 #changes-table .changed-date { width: 170px; font-size: 11px; color: var(--muted); }
