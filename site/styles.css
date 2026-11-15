@@ -113,6 +113,8 @@ th.numeric { width: 96px; }
 .detail-subtitle { margin: 5px 0 9px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
 .card-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .blueprint { color: #8a968e; font-size: 10px; margin-left: auto; overflow-wrap: anywhere; }
+.cardtrader-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; color: var(--green); font-size: 12px; text-underline-offset: 3px; }
+.cardtrader-link .icon { width: 14px; height: 14px; flex-basis: 14px; }
 .detail-prices { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
 .field-label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 5px; }
 .detail-prices strong { display: block; font-size: 23px; line-height: 1.25; font-weight: 600; overflow-wrap: anywhere; }

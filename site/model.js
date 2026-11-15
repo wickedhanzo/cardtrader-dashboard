@@ -77,6 +77,10 @@
       if (filters.sort === "price" || filters.sort === "price-desc") {
         if (a.available !== b.available) return a.available ? -1 : 1;
         comparison = (a.currentPriceCents - b.currentPriceCents) * (filters.sort === "price-desc" ? -1 : 1);
+      } else if (filters.sort === "collector-number" || filters.sort === "collector-number-desc") {
+        const left = a.collectorNumber.trim(), right = b.collectorNumber.trim();
+        if (Boolean(left) !== Boolean(right)) return left ? -1 : 1;
+        comparison = collator.compare(left, right) * (filters.sort === "collector-number-desc" ? -1 : 1);
       } else if (filters.sort === "drop" || filters.sort === "drop-percent") {
         const left = change24h(a, prices.lastCheckedAt);
         const right = change24h(b, prices.lastCheckedAt);

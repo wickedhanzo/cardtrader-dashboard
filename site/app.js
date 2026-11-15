@@ -347,6 +347,7 @@
       chartActiveIndex = -1;
       $("chart-tooltip").hidden = true;
       $("card-image").removeAttribute("src");
+      $("cardtrader-link").removeAttribute("href");
       return;
     }
     const saved = D.setting(state.settings, card.id);
@@ -356,6 +357,7 @@
     $("detail-rarity").textContent = card.rarity || "Unknown rarity";
     $("detail-finish").textContent = card.isFoil ? "Foil" : "Normal";
     $("detail-blueprint").textContent = `ID ${card.blueprintId}`;
+    $("cardtrader-link").href = `https://www.cardtrader.com/en/cards/${card.blueprintId}`;
     $("detail-price").textContent = card.available ? formatMoney(card.currentPriceCents) : "Unavailable";
     $("detail-price").className = card.available ? "" : "unavailable";
     $("detail-drop").textContent = drop ? `${drop.dropCents > 0 ? "-" : drop.dropCents < 0 ? "+" : ""}${formatMoney(Math.abs(drop.dropCents))}` : "\u2014";
