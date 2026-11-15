@@ -274,6 +274,7 @@ th.numeric { width: 96px; }
 .change-ownership { display: inline-flex; align-items: center; gap: 3px; margin-top: 5px; }
 .change-ownership.acquired { color: var(--green); background: #e3f2e9; }
 .change-ownership .icon { width: 12px; height: 12px; flex-basis: 12px; }
+.run-changes-table .numeric { white-space: normal; overflow-wrap: anywhere; }
 .mobile-change-date { display: none; }
 .changes-footer { border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 12px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
 .pagination { display: flex; align-items: center; gap: 4px; }
@@ -305,5 +306,6 @@ dialog .remember-choice input { width: 16px; }
 @media (max-width: 600px) { #cards-table { min-width: var(--collection-table-mobile-min-width, 912px); } #cards-table .card-column { width: 145px; } #cards-table td:nth-child(2), #cards-table .card-column { left: 28px; } #cards-table .nm-column { width: 82px; } #cards-table .condition-column { width: 74px; } }
 @media (max-width: 600px) { .mobile-drop-percent { display: block; font-size: 10px; font-weight: 400; margin-top: 3px; } .mobile-price-period { display: inline; } }
 @media (max-width: 600px) { .view-navigation { gap: 20px; } .view-navigation a { font-size: 12px; } .changes-filters { grid-template-columns: 1fr; } #changes-table .changed-date, #changes-table .previous-price { display: none; } .mobile-change-date { display: block; margin-top: 5px; } .changes-footer { justify-content: center; } #changes-range { width: 100%; text-align: center; font-size: 11px; } }
+@media (max-width: 600px) { #changes-table th.numeric { width: 88px; } #changes-table th.numeric:last-child { width: 96px; } }
 @media (max-width: 740px) { .binder-spread { max-width: 520px; padding: 10px; } .binder-pages { grid-template-columns: minmax(0, 1fr); gap: 18px; } .binder-spine, .binder-sheet-empty { display: none; } }
 @media (max-width: 600px) { .binder-filters { grid-template-columns: minmax(0, 1fr); } .binder-heading { gap: 10px; } .binder-toolbar { justify-content: center; } #binder-range { width: 100%; text-align: center; font-size: 11px; } .binder-sheet { padding: 5px; } .binder-pocket { padding: 4px; } .binder-card-meta { font-size: 9px; } .binder-card-meta input { width: 14px; height: 14px; } .view-navigation { gap: 14px; } .view-navigation a { gap: 5px; } .view-navigation .icon { width: 14px; height: 14px; flex-basis: 14px; } }
