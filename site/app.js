@@ -15,6 +15,9 @@
     setItem: (key, value) => localStorage.setItem(key, value),
     removeItem: key => localStorage.removeItem(key)
   }, new URL(".", window.location.href).pathname);
+  const columnStore = D.createColumnStore({
+    getItem: key => localStorage.getItem(key), setItem: (key, value) => localStorage.setItem(key, value)
+  }, new URL(".", window.location.href).pathname);
   const state = {
     client: null, prices: null, settings: D.emptySettings(), selected: null, visible: [],
     filters: { search: "", expansion: "", ownership: "all", watched: false, sort: "name" },
@@ -22,7 +25,8 @@
     view: viewFromHash(), runs: [],
     changeFilters: { search: "", expansion: "", direction: "all" }, changesPage: 1,
     expandedRuns: new Set(), runPages: new Map(),
-    binderFilters: { search: "", expansion: "", ownership: "all", finish: "all" }, binderPage: 1
+    binderFilters: { search: "", expansion: "", ownership: "all", finish: "all" }, binderPage: 1,
+    visibleGrades: new Set(columnStore.read())
   };
   let imageSourceKey = null;
   let focusCardOnNavigation = false;
@@ -99,7 +103,11 @@
       amount.className = "cardmarket-trend" + (reference.quote?.trendCents > 0 ? "" : " muted");
       amount.textContent = referenceMoney(reference.quote?.trendCents);
       amount.title = `General trend / #${reference.productId}${reference.quote ? ` / ${formatDate(reference.quote.updatedAt)}` : " / No guide quote available"}`;
-      entry.append(cardmarketLink(card, reference), amount);
+      const low = document.createElement("span");
+      low.className = "cardmarket-low" + (reference.quote?.lowCents > 0 ? "" : " muted");
+      low.textContent = `Low ${referenceMoney(reference.quote?.lowCents)}`;
+      low.title = `General low / #${reference.productId}${reference.quote ? ` / ${formatDate(reference.quote.updatedAt)}` : " / No guide quote available"}`;
+      entry.append(cardmarketLink(card, reference), amount, low);
       cell.append(entry);
     }
     return cell;
@@ -256,6 +264,8 @@
       titleCell.append(title, metadata);
       const price = document.createElement("td");
       price.className = "numeric price" + (card.available ? "" : " unavailable");
+      price.dataset.gradeColumn = "NM";
+      price.hidden = !state.visibleGrades.has("NM");
       price.textContent = card.available ? formatMoney(card.currentPriceCents) : "Unavailable";
       if (!card.available) price.title = D.conditionPrice(card).lastSeenAt ? `NM last seen ${formatDate(card.lastSeenAt)} at ${formatMoney(card.currentPriceCents)}` : "No NM listing observed";
       const drop = D.change24h(card, state.prices.lastCheckedAt);
@@ -287,6 +297,8 @@
         const cell = document.createElement("td");
         cell.className = "numeric condition-column";
         cell.dataset.condition = condition.code;
+        cell.dataset.gradeColumn = condition.code;
+        cell.hidden = !state.visibleGrades.has(condition.code);
         const value = document.createElement("button");
         value.type = "button";
         value.className = "condition-value" + (quote.available ? "" : " muted");
@@ -314,10 +326,69 @@
       fragment.append(row);
     }
     $("cards-body").replaceChildren(fragment);
+    renderColumnVisibility();
     $("result-count").textContent = `${state.visible.length.toLocaleString()} ${state.visible.length === 1 ? "card" : "cards"}`;
     $("table-summary").textContent = state.prices ? `${state.visible.length.toLocaleString()} of ${state.prices.cards.length.toLocaleString()} cards` : "No snapshot loaded";
     $("clear-search").hidden = !state.filters.search;
     renderEmpty();
+  }
+
+  function renderColumnVisibility() {
+    document.querySelectorAll("#cards-table th[data-grade-column]").forEach(header => {
+      header.hidden = !state.visibleGrades.has(header.dataset.gradeColumn);
+    });
+    document.querySelectorAll("#grade-column-options input").forEach(input => {
+      input.checked = state.visibleGrades.has(input.value);
+    });
+    $("grade-column-count").textContent = `${state.visibleGrades.size} of ${D.CONDITIONS.length}`;
+    $("reset-grade-columns").disabled = state.visibleGrades.size === D.CONDITIONS.length;
+    const secondary = [...state.visibleGrades].filter(code => code !== "NM").length;
+    $("cards-table").style.setProperty("--collection-table-min-width", `${566 + secondary * 76 + (state.visibleGrades.has("NM") ? 98 : 0)}px`);
+    $("cards-table").style.setProperty("--collection-table-mobile-min-width", `${386 + secondary * 74 + (state.visibleGrades.has("NM") ? 82 : 0)}px`);
+  }
+
+  function setGradeColumns() {
+    columnStore.save([...state.visibleGrades]);
+    renderTable();
+  }
+
+  function initializeGradeColumns() {
+    for (const condition of D.CONDITIONS) {
+      const label = document.createElement("label");
+      label.title = condition.name;
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.value = condition.code;
+      checkbox.setAttribute("aria-label", `Show ${condition.code} column`);
+      checkbox.addEventListener("change", () => {
+        if (checkbox.checked) state.visibleGrades.add(condition.code); else state.visibleGrades.delete(condition.code);
+        setGradeColumns();
+      });
+      const code = document.createElement("span");
+      code.className = "condition-code";
+      code.style.setProperty("--grade-color", condition.color);
+      code.textContent = condition.code;
+      const name = document.createElement("span");
+      name.textContent = condition.name;
+      label.append(checkbox, code, name);
+      $("grade-column-options").append(label);
+    }
+    $("reset-grade-columns").addEventListener("click", () => {
+      state.visibleGrades = new Set(D.CONDITIONS.map(condition => condition.code));
+      setGradeColumns();
+    });
+    document.addEventListener("click", event => {
+      if (!$("grade-columns-control").contains(event.target)) $("grade-columns-control").open = false;
+    });
+    $("grade-columns-control").addEventListener("keydown", event => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      $("grade-columns-control").open = false;
+      $("grade-columns-button").focus();
+    });
+    $("grade-columns-control").addEventListener("focusout", event => {
+      if (event.relatedTarget && !$("grade-columns-control").contains(event.relatedTarget)) $("grade-columns-control").open = false;
+    });
   }
 
   function selectCard(id, focus) {
@@ -1186,6 +1257,7 @@
   });
   if (typeof ResizeObserver !== "undefined") new ResizeObserver(drawChart).observe($("history-chart"));
   else window.addEventListener("resize", drawChart);
+  initializeGradeColumns();
   render();
   const remembered = connectionStore.read();
   if (remembered) connectRepository(remembered.config, remembered.token, true, true);

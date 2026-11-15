@@ -126,6 +126,37 @@
     }));
   }
 
+  function cardmarketSortValue(card, metric) {
+    if (!["trendCents", "lowCents"].includes(metric)) return null;
+    const ids = new Set(card.cardmarketIds || []);
+    let lowest = null;
+    for (const quote of card.cardmarketQuotes || []) {
+      const amount = quote?.[metric];
+      if (ids.has(quote?.productId) && quote.isFoil === card.isFoil && targetCents(amount) && amount > 0 &&
+          (lowest === null || amount < lowest)) lowest = amount;
+    }
+    return lowest;
+  }
+
+  function createColumnStore(storage, scope = "/") {
+    const key = `cardtrader.columns.v1:${scope}`;
+    const all = () => CONDITIONS.map(condition => condition.code);
+    const valid = value => Array.isArray(value) && value.every(code => all().includes(code)) && new Set(value).size === value.length;
+    return {
+      read() {
+        try {
+          const value = JSON.parse(storage.getItem(key));
+          return valid(value) ? all().filter(code => value.includes(code)) : all();
+        } catch (_) { return all(); }
+      },
+      save(value) {
+        if (!valid(value)) return false;
+        try { storage.setItem(key, JSON.stringify(all().filter(code => value.includes(code)))); return true; }
+        catch (_) { return false; }
+      }
+    };
+  }
+
   function setting(settings, id) {
     const card = settings.cards[id] || {};
     return { acquired: card.acquired === true, notificationPriceCents: card.notificationPriceCents ?? null };
@@ -179,9 +210,16 @@
         (filters.ownership !== "acquired" || saved.acquired) && (filters.ownership !== "missing" || !saved.acquired) &&
         (!filters.watched || watchTargets(settings, card.id).length > 0);
     });
+    const cardmarketMetric = ["cm-trend", "cm-trend-desc"].includes(filters.sort) ? "trendCents" :
+      ["cm-low", "cm-low-desc"].includes(filters.sort) ? "lowCents" : null;
+    const referenceValues = cardmarketMetric ? new Map(result.map(card => [card.id, cardmarketSortValue(card, cardmarketMetric)])) : null;
     return result.sort((a, b) => {
       let comparison = 0;
-      if (filters.sort === "price" || filters.sort === "price-desc") {
+      if (referenceValues) {
+        const left = referenceValues.get(a.id), right = referenceValues.get(b.id);
+        if ((left !== null) !== (right !== null)) return left !== null ? -1 : 1;
+        comparison = ((left ?? 0) - (right ?? 0)) * (filters.sort.endsWith("-desc") ? -1 : 1);
+      } else if (filters.sort === "price" || filters.sort === "price-desc") {
         if (a.available !== b.available) return a.available ? -1 : 1;
         comparison = (a.currentPriceCents - b.currentPriceCents) * (filters.sort === "price-desc" ? -1 : 1);
       } else if (filters.sort === "collector-number" || filters.sort === "collector-number-desc") {
@@ -462,7 +500,7 @@
   }
 
   const api = { DEFAULT_BRANCH, CONDITIONS, emptySettings, validateSettings, validatePrices, cardLanguage, cardLanguageInfo,
-    cardmarketUrl, cardmarketReferences, setting, watchThreshold, watchTargets,
+    cardmarketUrl, cardmarketReferences, cardmarketSortValue, createColumnStore, setting, watchThreshold, watchTargets,
     conditionPrice, conditionSeries, change24h, filterCards, binderPage, priceChanges, filterPriceChanges, checkRuns, filterCheckRuns, paginatePriceChanges, parseTarget,
     validateConnection, createConnectionStore, encodeContent, decodeContent, createClient, imageSources };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

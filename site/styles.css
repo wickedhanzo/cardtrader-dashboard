@@ -71,6 +71,17 @@ h1 { font-size: 27px; line-height: 1.2; font-weight: 650; margin: 0; }
 .watched-filter { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .watched-filter .icon { width: 14px; height: 14px; flex-basis: 14px; }
 .result-count { margin-left: auto; font-size: 11px; color: var(--muted); }
+.collection-options { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.collection-options .result-count { width: auto; margin: 0; }
+.column-menu { position: relative; }
+.column-menu > summary { list-style: none; }
+.column-menu > summary::-webkit-details-marker { display: none; }
+.column-menu[open] > summary { background: #e4ece7; }
+.column-menu-panel { position: absolute; z-index: 4; right: 0; top: calc(100% + 6px); width: 244px; max-width: calc(100vw - 32px); padding: 8px 10px 2px; background: #fff; border: 1px solid var(--line); border-radius: 5px; box-shadow: 0 4px 16px #1b38201a; }
+#grade-column-options { border: 0; margin: 0; padding: 0; min-width: 0; }
+#grade-column-options label { display: grid; grid-template-columns: 16px 25px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 32px; font-size: 12px; cursor: pointer; }
+#grade-column-options label > span { overflow-wrap: anywhere; }
+.column-menu-footer { display: flex; align-items: center; justify-content: space-between; border-top: 1px solid var(--line); margin-top: 6px; padding-top: 2px; color: var(--muted); font-size: 10px; }
 .table-scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; text-align: left; font-size: 12px; table-layout: fixed; }
 thead { background: #eef2ef; color: #727e76; }
@@ -93,6 +104,7 @@ th.numeric { width: 96px; }
 .cardmarket-reference { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; }
 .cardmarket-reference + .cardmarket-reference { margin-top: 8px; padding-top: 7px; border-top: 1px solid var(--line); }
 .cardmarket-trend { font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; max-width: 100%; }
+.cardmarket-low { font-size: 10px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; max-width: 100%; color: #64736b; }
 .cardmarket-link { display: inline-flex; align-items: center; gap: 4px; color: #1976ad; font-size: 11px; text-underline-offset: 3px; overflow-wrap: anywhere; max-width: 100%; }
 .cardmarket-link .icon { width: 12px; height: 12px; flex-basis: 12px; }
 .cardmarket-section { border-top: 1px solid var(--line); padding: 15px 0; }
@@ -165,7 +177,7 @@ th.numeric { width: 96px; }
 .grade-hp { --grade-color: #b64770; }
 .grade-po { --grade-color: #8756a0; }
 .grade-m { --grade-color: #557c39; }
-#cards-table { min-width: 1120px; }
+#cards-table { min-width: var(--collection-table-min-width, 1120px); }
 #cards-table .card-column { width: 220px; }
 #cards-table .condition-column { width: 76px; padding-left: 6px; padding-right: 6px; }
 #cards-table .nm-column { width: 98px; }
@@ -284,7 +296,7 @@ dialog .remember-choice input { width: 16px; }
 @media (max-width: 600px) { .topbar { padding: 13px 16px; min-height: 71px; } .brand { font-size: 18px; gap: 8px; } .brand-mark { width: 34px; height: 38px; } .brand-caption { font-size: 8px; } .topbar-actions { gap: 2px; } #connect-button { max-width: 165px; font-size: 11px; gap: 5px; padding: 6px 8px; } #access-badge { display: none; } .main { padding: 23px 16px 0; } h1 { font-size: 25px; } .connection-line { font-size: 10px; } #repository-label { max-width: 100%; overflow-wrap: anywhere; } .last-checked { border: 0; padding: 0; margin: 0 0 0 13px; flex-basis: 100%; } .metrics { padding: 20px 0; gap: 0; } .metric { padding: 0 10px; } .metric > span { font-size: 10px; } .metric strong { font-size: 23px; } .filters { grid-template-columns: 1fr 1fr; } .search-field { grid-column: 1 / -1; } .sort-field { grid-column: auto; } .filter-secondary { gap: 12px; } .segments button { padding: 4px 9px; font-size: 11px; } .watched-filter { font-size: 11px; gap: 5px; } .result-count { font-size: 10px; } table { font-size: 11px; } th, td { padding-left: 7px; padding-right: 7px; } th.numeric { width: 75px; } .card-title { font-size: 12px; } .card-meta { font-size: 9px; } th.acquired-cell, td.acquired-cell { width: 28px; padding-left: 2px; padding-right: 4px; } .change-column { display: none; } .empty-state { min-height: 300px; } .repo-fields { grid-template-columns: 1fr; gap: 12px; } dialog { padding: 20px; } .card-art { height: 250px; } }
 @media (max-width: 360px) { .topbar { padding-left: 12px; padding-right: 12px; } .brand-mark { display: none; } #connect-button { max-width: 145px; } .main { padding-left: 12px; padding-right: 12px; } .filter-secondary { gap: 9px; } .result-count { width: 100%; text-align: right; } th.numeric { width: 68px; } }
 @media (prefers-reduced-motion: reduce) { .spinning { animation: none; } }
-@media (max-width: 600px) { #cards-table { min-width: 1015px; } #cards-table .card-column { width: 145px; } #cards-table td:nth-child(2), #cards-table .card-column { left: 28px; } #cards-table .nm-column { width: 82px; } #cards-table .condition-column { width: 74px; } }
+@media (max-width: 600px) { #cards-table { min-width: var(--collection-table-mobile-min-width, 912px); } #cards-table .card-column { width: 145px; } #cards-table td:nth-child(2), #cards-table .card-column { left: 28px; } #cards-table .nm-column { width: 82px; } #cards-table .condition-column { width: 74px; } }
 @media (max-width: 600px) { .mobile-drop-percent { display: block; font-size: 10px; font-weight: 400; margin-top: 3px; } .mobile-price-period { display: inline; } }
 @media (max-width: 600px) { .view-navigation { gap: 20px; } .view-navigation a { font-size: 12px; } .changes-filters { grid-template-columns: 1fr; } #changes-table .changed-date, #changes-table .previous-price { display: none; } .mobile-change-date { display: block; margin-top: 5px; } .changes-footer { justify-content: center; } #changes-range { width: 100%; text-align: center; font-size: 11px; } }
 @media (max-width: 740px) { .binder-spread { max-width: 520px; padding: 10px; } .binder-pages { grid-template-columns: minmax(0, 1fr); gap: 18px; } .binder-spine, .binder-sheet-empty { display: none; } }
