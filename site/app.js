@@ -20,7 +20,7 @@
   }, new URL(".", window.location.href).pathname);
   const state = {
     client: null, prices: null, settings: D.emptySettings(), selected: null, visible: [],
-    filters: { search: "", expansion: "", ownership: "all", watched: false, sort: "name" },
+    filters: { search: "", expansion: "", ownership: "all", watched: false, cardmarketLowAboveNm: false, sort: "name" },
     drafts: new Map(), busy: false, loading: false, session: 0, pendingClient: null, connecting: false,
     view: viewFromHash(), runs: [],
     changeFilters: { search: "", expansion: "", direction: "all" }, changesPage: 1,
@@ -938,11 +938,12 @@
   }
 
   function resetCollectionFilters(overrides = {}) {
-    state.filters = { search: "", expansion: "", ownership: "all", watched: false, sort: "name", ...overrides };
+    state.filters = { search: "", expansion: "", ownership: "all", watched: false, cardmarketLowAboveNm: false, sort: "name", ...overrides };
     $("search").value = state.filters.search;
     $("expansion").value = state.filters.expansion;
     $("sort").value = state.filters.sort;
     $("watched").checked = state.filters.watched;
+    $("cardmarket-low-above-nm").checked = state.filters.cardmarketLowAboveNm;
     document.querySelectorAll("[data-ownership]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.ownership === state.filters.ownership)));
   }
 
@@ -1116,6 +1117,7 @@
   $("expansion").addEventListener("change", event => { state.filters.expansion = event.target.value; renderTable(); renderDetail(); });
   $("sort").addEventListener("change", event => { state.filters.sort = event.target.value; renderTable(); renderDetail(); });
   $("watched").addEventListener("change", event => { state.filters.watched = event.target.checked; renderTable(); renderDetail(); });
+  $("cardmarket-low-above-nm").addEventListener("change", event => { state.filters.cardmarketLowAboveNm = event.target.checked; renderTable(); renderDetail(); });
   document.querySelectorAll("[data-ownership]").forEach(button => button.addEventListener("click", () => {
     state.filters.ownership = button.dataset.ownership;
     document.querySelectorAll("[data-ownership]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));

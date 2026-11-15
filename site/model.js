@@ -208,7 +208,9 @@
       const haystack = [card.name, card.expansion, card.collectorNumber, String(card.blueprintId)].join("\n").toLocaleLowerCase();
       return (!query || haystack.includes(query)) && (!filters.expansion || String(card.expansionId) === filters.expansion) &&
         (filters.ownership !== "acquired" || saved.acquired) && (filters.ownership !== "missing" || !saved.acquired) &&
-        (!filters.watched || watchTargets(settings, card.id).length > 0);
+        (!filters.watched || watchTargets(settings, card.id).length > 0) &&
+        (!filters.cardmarketLowAboveNm || card.available && card.currentPriceCents > 0 &&
+          (cardmarketSortValue(card, "lowCents") ?? 0) > card.currentPriceCents);
     });
     const cardmarketMetric = ["cm-trend", "cm-trend-desc"].includes(filters.sort) ? "trendCents" :
       ["cm-low", "cm-low-desc"].includes(filters.sort) ? "lowCents" : null;

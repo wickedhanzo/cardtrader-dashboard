@@ -68,7 +68,7 @@ h1 { font-size: 27px; line-height: 1.2; font-weight: 650; margin: 0; }
 .segments { display: flex; align-items: center; padding: 3px; background: #eaf0ec; border-radius: 5px; }
 .segments button { padding: 4px 11px; font-size: 12px; background: transparent; border-radius: 3px; color: #6b7770; min-height: 29px; }
 .segments button[aria-pressed="true"] { background: #fff; box-shadow: 0 1px 2px #1b382015; color: #243c2f; font-weight: 600; }
-.watched-filter { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.watched-filter, .price-comparison-filter { display: flex; align-items: center; gap: 6px; font-size: 12px; }
 .watched-filter .icon { width: 14px; height: 14px; flex-basis: 14px; }
 .result-count { margin-left: auto; font-size: 11px; color: var(--muted); }
 .collection-options { margin-left: auto; display: flex; align-items: center; gap: 8px; }
