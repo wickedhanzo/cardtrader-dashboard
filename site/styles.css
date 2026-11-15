@@ -268,6 +268,12 @@ th.numeric { width: 96px; }
 .run-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 7px 0; }
 .run-pagination > span { margin-right: auto; color: var(--muted); font-size: 11px; }
 .run-empty { padding: 10px 8px 20px; margin: 0; color: var(--muted); font-size: 12px; }
+.run-toolbar { display: flex; justify-content: flex-end; padding: 0 0 8px; }
+.run-sort-field { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--muted); max-width: 100%; }
+.run-sort { width: 202px; max-width: 100%; min-width: 0; font-size: 11px; }
+.change-ownership { display: inline-flex; align-items: center; gap: 3px; margin-top: 5px; }
+.change-ownership.acquired { color: var(--green); background: #e3f2e9; }
+.change-ownership .icon { width: 12px; height: 12px; flex-basis: 12px; }
 .mobile-change-date { display: none; }
 .changes-footer { border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 12px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
 .pagination { display: flex; align-items: center; gap: 4px; }

@@ -6,6 +6,8 @@ The Collection view includes search, acquired flags, independent condition price
 
 The 24-hour euro/percentage changes, Price changes feed and run update totals remain **NM-only**. Checks are grouped newest first, including zero-update runs, with checked/new/update totals and expandable change lists. Runs and their changes use 100-entry pages with search, expansion, and direction filters. Older records stay under Earlier history. All views share the same connection. Deployments give JavaScript/CSS content-versioned URLs so cached assets cannot leave new controls inert.
 
+Each expanded change group has independent signed percentage/EUR sorting, low or high first, across all matching entries before pagination; undefined percentages stay last. Recorded order remains available and the runs themselves stay newest first. Acquired/Missing badges and the acquired-status filter use each exact variant's current saved collection status. Ownership combines with the other filters, while original run totals are retained. Sort choices survive paging, collapse/reopen and in-session navigation. None of these controls write repository settings.
+
 1. Push this folder to a new public GitHub repository with `main` as the default branch.
 2. Under **Settings > Pages > Build and deployment**, choose **GitHub Actions**.
 3. Run **Publish dashboard** under Actions, or push a change to `main`.

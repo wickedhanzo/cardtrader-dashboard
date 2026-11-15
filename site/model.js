@@ -271,13 +271,29 @@
       expansionTotal: scoped.length, acquired, missing: scoped.length - acquired };
   }
 
-  function filterPriceChanges(changes, filters) {
+  function filterPriceChanges(changes, filters, settings = emptySettings()) {
     const query = (filters.search || "").trim().toLocaleLowerCase();
     return changes.filter(change => {
       const card = change.card;
+      const acquired = setting(settings, card.id).acquired;
       const text = [card.name, card.expansion, card.collectorNumber, String(card.blueprintId)].join("\n").toLocaleLowerCase();
       return (!query || text.includes(query)) && (!filters.expansion || String(card.expansionId) === filters.expansion) &&
-        (filters.direction !== "drops" || change.changeCents < 0) && (filters.direction !== "increases" || change.changeCents > 0);
+        (filters.direction !== "drops" || change.changeCents < 0) && (filters.direction !== "increases" || change.changeCents > 0) &&
+        (filters.ownership !== "acquired" || acquired) && (filters.ownership !== "missing" || !acquired);
+    });
+  }
+
+  function sortPriceChanges(changes, sort = "recorded") {
+    const metric = ["amount", "amount-desc"].includes(sort) ? "changeCents" :
+      ["percent", "percent-desc"].includes(sort) ? "percent" : null;
+    if (!metric) return [...changes];
+    const direction = sort.endsWith("-desc") ? -1 : 1;
+    return [...changes].sort((a, b) => {
+      const left = a[metric], right = b[metric];
+      const hasLeft = Number.isFinite(left), hasRight = Number.isFinite(right);
+      if (hasLeft !== hasRight) return hasLeft ? -1 : 1;
+      return (hasLeft ? (left - right) * direction : 0) || b.timestamp - a.timestamp ||
+        a.card.name.localeCompare(b.card.name) || a.id.localeCompare(b.id);
     });
   }
 
@@ -299,10 +315,11 @@
     return runs.sort((a, b) => b.timestamp - a.timestamp || a.id.localeCompare(b.id));
   }
 
-  function filterCheckRuns(runs, filters) {
-    const active = Boolean((filters.search || "").trim() || filters.expansion || (filters.direction && filters.direction !== "all"));
+  function filterCheckRuns(runs, filters, settings = emptySettings()) {
+    const active = Boolean((filters.search || "").trim() || filters.expansion || (filters.direction && filters.direction !== "all") ||
+      ["missing", "acquired"].includes(filters.ownership));
     return runs.flatMap(run => {
-      const changes = filterPriceChanges(run.changes, filters);
+      const changes = filterPriceChanges(run.changes, filters, settings);
       return active && !changes.length ? [] : [{ ...run, changes }];
     });
   }
@@ -503,7 +520,7 @@
 
   const api = { DEFAULT_BRANCH, CONDITIONS, emptySettings, validateSettings, validatePrices, cardLanguage, cardLanguageInfo,
     cardmarketUrl, cardmarketReferences, cardmarketSortValue, createColumnStore, setting, watchThreshold, watchTargets,
-    conditionPrice, conditionSeries, change24h, filterCards, binderPage, priceChanges, filterPriceChanges, checkRuns, filterCheckRuns, paginatePriceChanges, parseTarget,
+    conditionPrice, conditionSeries, change24h, filterCards, binderPage, priceChanges, filterPriceChanges, sortPriceChanges, checkRuns, filterCheckRuns, paginatePriceChanges, parseTarget,
     validateConnection, createConnectionStore, encodeContent, decodeContent, createClient, imageSources };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.CardTraderData = Object.freeze(api);

@@ -23,8 +23,8 @@
     filters: { search: "", expansion: "", ownership: "all", watched: false, cardmarketLowAboveNm: false, sort: "name" },
     drafts: new Map(), busy: false, loading: false, session: 0, pendingClient: null, connecting: false,
     view: viewFromHash(), runs: [],
-    changeFilters: { search: "", expansion: "", direction: "all" }, changesPage: 1,
-    expandedRuns: new Set(), runPages: new Map(),
+    changeFilters: { search: "", expansion: "", direction: "all", ownership: "all" }, changesPage: 1,
+    expandedRuns: new Set(), runPages: new Map(), runSorts: new Map(),
     binderFilters: { search: "", expansion: "", ownership: "all", finish: "all" }, binderPage: 1,
     visibleGrades: new Set(columnStore.read())
   };
@@ -787,7 +787,7 @@
   }
 
   function renderPriceChanges() {
-    const filtered = D.filterCheckRuns(state.runs, state.changeFilters);
+    const filtered = D.filterCheckRuns(state.runs, state.changeFilters, state.settings);
     const page = D.paginatePriceChanges(filtered, state.changesPage);
     state.changesPage = page.page;
     const fragment = document.createDocumentFragment();
@@ -850,7 +850,8 @@
   }
 
   function renderRunContents(container, run) {
-    const page = D.paginatePriceChanges(run.changes, state.runPages.get(run.id) || 1);
+    const sort = state.runSorts.get(run.id) || "recorded";
+    const page = D.paginatePriceChanges(D.sortPriceChanges(run.changes, sort), state.runPages.get(run.id) || 1);
     state.runPages.set(run.id, page.page);
     if (!page.total) {
       const empty = document.createElement("p");
@@ -859,6 +860,27 @@
       container.replaceChildren(empty);
       return;
     }
+    const toolbar = document.createElement("div");
+    toolbar.className = "run-toolbar";
+    const sortLabel = document.createElement("label");
+    sortLabel.className = "run-sort-field";
+    sortLabel.textContent = "Sort";
+    const sortSelect = document.createElement("select");
+    sortSelect.className = "run-sort";
+    sortSelect.setAttribute("aria-label", "Sort changes in this run");
+    sortSelect.title = "Sort all matching changes before pagination. Negative changes are price drops.";
+    for (const [value, text] of [["recorded", "Recorded order"], ["percent", "Change % (low first)"],
+      ["percent-desc", "Change % (high first)"], ["amount", "Change EUR (low first)"], ["amount-desc", "Change EUR (high first)"]])
+      sortSelect.add(new Option(text, value));
+    sortSelect.value = sort;
+    sortSelect.addEventListener("change", () => {
+      state.runSorts.set(run.id, sortSelect.value);
+      state.runPages.set(run.id, 1);
+      renderRunContents(container, run);
+      container.querySelector(".run-sort").focus({ preventScroll: true });
+    });
+    sortLabel.append(sortSelect);
+    toolbar.append(sortLabel);
     const scroll = document.createElement("div");
     scroll.className = "table-scroll";
     const table = document.createElement("table");
@@ -896,7 +918,14 @@
       metadata.textContent = `${change.card.expansion} / #${change.card.collectorNumber}${change.card.isFoil ? " / Foil" : ""}`;
       const mobileTime = time.cloneNode(true);
       mobileTime.className = "mobile-change-date card-meta";
-      cardCell.append(name, metadata, mobileTime);
+      const acquired = D.setting(state.settings, change.card.id).acquired;
+      const ownership = document.createElement("span");
+      ownership.className = "badge change-ownership" + (acquired ? " acquired" : "");
+      ownership.dataset.acquired = String(acquired);
+      ownership.textContent = acquired ? "Acquired" : "Missing";
+      ownership.title = "Current collection status";
+      if (acquired) ownership.prepend(icon("check"));
+      cardCell.append(name, metadata, ownership, mobileTime);
       const before = document.createElement("td");
       before.className = "numeric previous-price";
       before.textContent = formatMoney(change.beforeCents);
@@ -935,7 +964,7 @@
         footer.append(button);
       }
     }
-    container.replaceChildren(scroll, footer);
+    container.replaceChildren(toolbar, scroll, footer);
   }
 
   function resetCollectionFilters(overrides = {}) {
@@ -1098,6 +1127,7 @@
     state.runs = [];
     state.expandedRuns.clear();
     state.runPages.clear();
+    state.runSorts.clear();
     state.changesPage = 1;
     state.settings = D.emptySettings();
     state.selected = null;
@@ -1168,6 +1198,11 @@
     document.querySelectorAll("[data-direction]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
     filterChanges();
   }));
+  document.querySelectorAll("[data-change-ownership]").forEach(button => button.addEventListener("click", () => {
+    state.changeFilters.ownership = button.dataset.changeOwnership;
+    document.querySelectorAll("[data-change-ownership]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
+    filterChanges();
+  }));
   for (const [id, target] of [["changes-first", () => 1], ["changes-previous", () => state.changesPage - 1],
     ["changes-next", () => state.changesPage + 1], ["changes-last", () => Number.MAX_SAFE_INTEGER]]) {
     $(id).addEventListener("click", () => changePage(target()));
@@ -1186,9 +1221,10 @@
   $("changes-empty-action").addEventListener("click", () => {
     if (!state.client) return openConnect();
     if (!state.runs.length) return refresh();
-    state.changeFilters = { search: "", expansion: "", direction: "all" };
+    state.changeFilters = { search: "", expansion: "", direction: "all", ownership: "all" };
     $("changes-search").value = ""; $("changes-expansion").value = "";
     document.querySelectorAll("[data-direction]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.direction === "all")));
+    document.querySelectorAll("[data-change-ownership]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.changeOwnership === "all")));
     filterChanges();
   });
   window.addEventListener("hashchange", () => {
