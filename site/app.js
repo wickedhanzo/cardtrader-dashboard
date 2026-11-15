@@ -9,6 +9,7 @@
   const percentages = new Intl.NumberFormat(undefined, { style: "percent", minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "exceptZero" });
   const compactPercentages = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1, signDisplay: "exceptZero" });
   const preferencesKey = "cardtrader.repository.v1";
+  const viewFromHash = () => ({ "#/changes": "changes", "#/binder": "binder" })[window.location.hash] || "collection";
   const connectionStore = D.createConnectionStore({
     getItem: key => localStorage.getItem(key),
     setItem: (key, value) => localStorage.setItem(key, value),
@@ -18,9 +19,10 @@
     client: null, prices: null, settings: D.emptySettings(), selected: null, visible: [],
     filters: { search: "", expansion: "", ownership: "all", watched: false, sort: "name" },
     drafts: new Map(), busy: false, loading: false, session: 0, pendingClient: null, connecting: false,
-    view: window.location.hash === "#/changes" ? "changes" : "collection", runs: [],
+    view: viewFromHash(), runs: [],
     changeFilters: { search: "", expansion: "", direction: "all" }, changesPage: 1,
-    expandedRuns: new Set(), runPages: new Map()
+    expandedRuns: new Set(), runPages: new Map(),
+    binderFilters: { search: "", expansion: "", ownership: "all", finish: "all" }, binderPage: 1
   };
   let imageSourceKey = null;
   let focusCardOnNavigation = false;
@@ -104,6 +106,16 @@
     [...expansions].sort((a, b) => a[1].localeCompare(b[1])).forEach(([id, name]) => $("changes-expansion").add(new Option(name, id)));
     if (!expansions.has(state.changeFilters.expansion)) state.changeFilters.expansion = "";
     $("changes-expansion").value = state.changeFilters.expansion;
+    const ordered = [...expansions].sort((a, b) => a[1].localeCompare(b[1]));
+    $("binder-expansion").replaceChildren();
+    if (!expansions.has(state.binderFilters.expansion)) {
+      state.binderFilters.expansion = state.filters.expansion || ordered[0]?.[0] || "";
+      state.binderPage = 1;
+    }
+    if (!ordered.length) $("binder-expansion").add(new Option("No expansions", ""));
+    for (const [id, name] of ordered) $("binder-expansion").add(new Option(name, id));
+    $("binder-expansion").value = state.binderFilters.expansion;
+    $("binder-expansion").disabled = !ordered.length;
   }
 
   function renderEmpty() {
@@ -381,16 +393,121 @@
 
   function render() {
     updateControls();
-    const changesView = state.view === "changes";
-    $("collection-view").hidden = changesView;
-    $("changes-view").hidden = !changesView;
-    $("page-title").textContent = changesView ? "Price changes" : "Price tracker";
-    document.title = `${changesView ? "Price changes" : "Collection"} | CardTrader`;
-    for (const [id, active] of [["collection-link", !changesView], ["changes-link", changesView]]) {
-      if (active) $(id).setAttribute("aria-current", "page"); else $(id).removeAttribute("aria-current");
+    const titles = { collection: "Price tracker", changes: "Price changes", binder: "Collection binder" };
+    $("page-title").textContent = titles[state.view];
+    document.title = `${state.view === "collection" ? "Collection" : titles[state.view]} | CardTrader`;
+    for (const view of ["collection", "binder", "changes"]) {
+      $(`${view}-view`).hidden = state.view !== view;
+      if (state.view === view) $(`${view}-link`).setAttribute("aria-current", "page");
+      else $(`${view}-link`).removeAttribute("aria-current");
     }
-    if (changesView) renderPriceChanges();
+    if (state.view === "changes") renderPriceChanges();
+    else if (state.view === "binder") renderBinder();
     else { renderMetrics(); renderTable(); renderDetail(); }
+  }
+
+  function renderBinder() {
+    const page = D.binderPage(state.prices, state.settings, state.binderFilters, state.binderPage);
+    state.binderPage = page.page;
+    $("binder-content").hidden = page.total === 0;
+    $("binder-empty").hidden = page.total > 0;
+    $("binder-empty-title").textContent = !state.client ? "No repository connected" : state.prices?.cards.length ? "No matching cards" : "No cards in this snapshot";
+    $("binder-empty-action").textContent = !state.client ? "Connect repository" : state.prices?.cards.length ? "Clear filters" : "Refresh";
+    $("binder-empty-action").disabled = state.loading || state.busy || state.connecting;
+    $("binder-results").textContent = `${page.total.toLocaleString()} ${page.total === 1 ? "card" : "cards"}`;
+    $("clear-binder-search").hidden = !state.binderFilters.search;
+    $("binder-title").textContent = $("binder-expansion").selectedOptions[0]?.textContent || "";
+    $("binder-acquired-count").textContent = `${page.acquired.toLocaleString()} of ${page.expansionTotal.toLocaleString()} acquired`;
+    $("binder-progress").max = Math.max(1, page.expansionTotal);
+    $("binder-progress").value = page.acquired;
+    $("binder-range").textContent = `${page.total ? page.start + 1 : 0}-${page.end} of ${page.total.toLocaleString()}`;
+    $("binder-page").value = page.page;
+    $("binder-page").max = page.totalPages;
+    $("binder-total-pages").textContent = `of ${page.totalPages.toLocaleString()}`;
+    $("binder-bottom-page").textContent = `Spread ${page.page.toLocaleString()} of ${page.totalPages.toLocaleString()}`;
+    for (const suffix of ["", "-bottom"]) {
+      $(`binder-first${suffix}`).disabled = $(`binder-previous${suffix}`).disabled = page.page === 1;
+      $(`binder-last${suffix}`).disabled = $(`binder-next${suffix}`).disabled = page.page === page.totalPages;
+    }
+    const pages = document.createDocumentFragment();
+    if (page.total) for (let side = 0; side < 2; side += 1) {
+      const sheet = document.createElement("section");
+      sheet.className = "binder-sheet";
+      const number = (page.page - 1) * 2 + side + 1;
+      sheet.setAttribute("aria-label", `Binder page ${number}`);
+      const grid = document.createElement("div");
+      grid.className = "binder-grid";
+      const items = page.items.slice(side * 9, side * 9 + 9);
+      sheet.classList.toggle("binder-sheet-empty", items.length === 0);
+      for (let slot = 0; slot < 9; slot += 1) {
+        const card = items[slot];
+        const pocket = document.createElement("div");
+        pocket.className = "binder-pocket";
+        if (card) {
+          const acquired = D.setting(state.settings, card.id).acquired;
+          pocket.classList.toggle("is-missing", !acquired);
+          pocket.dataset.cardId = card.id;
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "binder-card";
+          button.title = `${card.name} / #${card.collectorNumber} / ${card.isFoil ? "Foil" : "Normal"} / ${acquired ? "Acquired" : "Missing"}`;
+          button.setAttribute("aria-label", button.title);
+          button.addEventListener("click", () => openChangedCard(card));
+          const art = document.createElement("span");
+          art.className = "binder-art";
+          const placeholder = document.createElement("span");
+          placeholder.className = "binder-image-placeholder";
+          placeholder.append(icon("image"));
+          const image = document.createElement("img");
+          image.className = "binder-image";
+          image.alt = `${card.name} card image`;
+          image.loading = "lazy";
+          image.decoding = "async";
+          image.referrerPolicy = "no-referrer";
+          image.onload = () => { image.hidden = false; placeholder.hidden = true; };
+          image.onerror = () => { image.hidden = true; placeholder.hidden = false; };
+          const source = D.imageSources(card)[0];
+          if (source) image.src = source;
+          else image.hidden = true;
+          art.append(image, placeholder);
+          const name = document.createElement("span");
+          name.className = "binder-card-name";
+          name.textContent = card.name;
+          button.append(art, name);
+          const metadata = document.createElement("div");
+          metadata.className = "binder-card-meta";
+          const collector = document.createElement("span");
+          collector.textContent = `#${card.collectorNumber}`;
+          collector.title = `Collector number ${card.collectorNumber}`;
+          const finish = document.createElement("span");
+          finish.textContent = card.isFoil ? "Foil" : "Normal";
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = acquired;
+          checkbox.disabled = !canEdit();
+          checkbox.title = "Acquired";
+          checkbox.setAttribute("aria-label", `Acquired: ${card.name}, #${card.collectorNumber}, ${card.isFoil ? "foil" : "normal"}`);
+          checkbox.addEventListener("change", async () => {
+            const focused = document.activeElement === checkbox;
+            await saveCard(card.id, { acquired: checkbox.checked });
+            if (focused && state.view === "binder")
+              document.querySelector(`#binder-pages [data-card-id="${card.id}"] input`)?.focus({ preventScroll: true });
+          });
+          metadata.append(collector, finish, checkbox);
+          pocket.append(button, metadata);
+        } else {
+          pocket.classList.add("binder-blank");
+          pocket.setAttribute("aria-hidden", "true");
+        }
+        grid.append(pocket);
+      }
+      const caption = document.createElement("span");
+      caption.className = "binder-sheet-number";
+      caption.textContent = items.length ? `Page ${number}` : "";
+      sheet.append(grid, caption);
+      pages.append(sheet);
+    }
+    $("binder-pages").replaceChildren(pages);
   }
 
   function renderPriceChanges() {
@@ -714,7 +831,7 @@
     $("repository-label").textContent = "No repository connected";
     $("last-checked").textContent = "Not checked";
     renderExpansions();
-    renderMetrics(); renderTable(); renderDetail(); renderPriceChanges();
+    renderMetrics(); renderTable(); renderDetail(); renderPriceChanges(); renderBinder();
     notice(forgotten ? "" : "Disconnected, but this browser could not remove the saved connection. Clear site data to forget it.", forgotten ? undefined : "error");
     render();
   });
@@ -733,6 +850,35 @@
     if (!state.prices?.cards.length) return refresh();
     resetCollectionFilters();
     render();
+  });
+  function filterBinder() { state.binderPage = 1; renderBinder(); }
+  $("binder-search").addEventListener("input", event => { state.binderFilters.search = event.target.value; filterBinder(); });
+  $("clear-binder-search").addEventListener("click", () => { $("binder-search").value = ""; state.binderFilters.search = ""; filterBinder(); $("binder-search").focus(); });
+  $("binder-expansion").addEventListener("change", event => { state.binderFilters.expansion = event.target.value; filterBinder(); });
+  $("binder-finish").addEventListener("change", event => { state.binderFilters.finish = event.target.value; filterBinder(); });
+  document.querySelectorAll("[data-binder-ownership]").forEach(button => button.addEventListener("click", () => {
+    state.binderFilters.ownership = button.dataset.binderOwnership;
+    document.querySelectorAll("[data-binder-ownership]").forEach(item => item.setAttribute("aria-pressed", String(item === button)));
+    filterBinder();
+  }));
+  function turnBinderPage(page, scroll = true) {
+    state.binderPage = page;
+    renderBinder();
+    if (scroll) $("binder-content").scrollIntoView({ block: "start", behavior: "instant" });
+  }
+  for (const [id, target] of [["binder-first", () => 1], ["binder-previous", () => state.binderPage - 1],
+    ["binder-next", () => state.binderPage + 1], ["binder-last", () => Number.MAX_SAFE_INTEGER]]) {
+    for (const suffix of ["", "-bottom"]) $(id + suffix).addEventListener("click", () => turnBinderPage(target()));
+  }
+  $("binder-page").addEventListener("change", () => turnBinderPage(Number($("binder-page").value), false));
+  $("binder-page").addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); turnBinderPage(Number($("binder-page").value)); } });
+  $("binder-empty-action").addEventListener("click", () => {
+    if (!state.client) return openConnect();
+    if (!state.prices?.cards.length) return refresh();
+    state.binderFilters = { ...state.binderFilters, search: "", ownership: "all", finish: "all" };
+    $("binder-search").value = ""; $("binder-finish").value = "all";
+    document.querySelectorAll("[data-binder-ownership]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.binderOwnership === "all")));
+    filterBinder();
   });
   function filterChanges() { state.changesPage = 1; state.runPages.clear(); renderPriceChanges(); }
   $("changes-search").addEventListener("input", event => { state.changeFilters.search = event.target.value; filterChanges(); });
@@ -767,7 +913,7 @@
     filterChanges();
   });
   window.addEventListener("hashchange", () => {
-    state.view = window.location.hash === "#/changes" ? "changes" : "collection";
+    state.view = viewFromHash();
     render();
     if (focusCardOnNavigation && state.view === "collection") {
       focusCardOnNavigation = false;

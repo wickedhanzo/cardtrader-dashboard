@@ -125,6 +125,19 @@
     return changes.sort((a, b) => b.timestamp - a.timestamp || a.card.name.localeCompare(b.card.name) || a.id.localeCompare(b.id));
   }
 
+  function binderPage(prices, settings, filters, requestedPage) {
+    const scoped = (prices?.cards || []).filter(card => String(card.expansionId) === filters.expansion &&
+      (!filters.finish || filters.finish === "all" || card.isFoil === (filters.finish === "foil")));
+    const cards = filterCards({ cards: scoped, lastCheckedAt: prices?.lastCheckedAt }, settings,
+      { search: filters.search, ownership: filters.ownership, sort: "collector-number" });
+    const totalPages = Math.max(1, Math.ceil(cards.length / 18));
+    const page = Math.max(1, Math.min(totalPages, Number.isFinite(Number(requestedPage)) ? Math.floor(Number(requestedPage)) : 1));
+    const start = (page - 1) * 18, end = Math.min(start + 18, cards.length);
+    const acquired = scoped.filter(card => setting(settings, card.id).acquired).length;
+    return { page, totalPages, start, end, total: cards.length, items: cards.slice(start, end),
+      expansionTotal: scoped.length, acquired, missing: scoped.length - acquired };
+  }
+
   function filterPriceChanges(changes, filters) {
     const query = (filters.search || "").trim().toLocaleLowerCase();
     return changes.filter(change => {
@@ -351,7 +364,7 @@
     return [...new Set(sources)];
   }
 
-  const api = { DEFAULT_BRANCH, emptySettings, validateSettings, validatePrices, setting, change24h, filterCards, priceChanges, filterPriceChanges, checkRuns, filterCheckRuns, paginatePriceChanges, parseTarget,
+  const api = { DEFAULT_BRANCH, emptySettings, validateSettings, validatePrices, setting, change24h, filterCards, binderPage, priceChanges, filterPriceChanges, checkRuns, filterCheckRuns, paginatePriceChanges, parseTarget,
     validateConnection, createConnectionStore, encodeContent, decodeContent, createClient, imageSources };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.CardTraderData = Object.freeze(api);
