@@ -115,6 +115,7 @@ th.numeric { width: 96px; }
 .blueprint { color: #8a968e; font-size: 10px; margin-left: auto; overflow-wrap: anywhere; }
 .cardtrader-link { display: inline-flex; align-items: center; gap: 5px; margin-top: 10px; color: var(--green); font-size: 12px; text-underline-offset: 3px; }
 .cardtrader-link .icon { width: 14px; height: 14px; flex-basis: 14px; }
+.cardtrader-link:not([href]) { display: none; }
 .detail-prices { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 20px 0; }
 .field-label { display: block; color: var(--muted); font-size: 11px; margin-bottom: 5px; }
 .detail-prices strong { display: block; font-size: 23px; line-height: 1.25; font-weight: 600; overflow-wrap: anywhere; }
@@ -158,6 +159,19 @@ th.numeric { width: 96px; }
 .changes-view .table-scroll { max-height: 60vh; overflow: auto; }
 #changes-table thead { position: sticky; top: 0; z-index: 1; }
 #changes-table .changed-date { width: 170px; font-size: 11px; color: var(--muted); }
+.run-group { border-top: 1px solid var(--line); }
+.run-group > summary { display: flex; align-items: center; gap: 10px; list-style: none; padding: 14px 8px; cursor: pointer; }
+.run-group > summary::-webkit-details-marker { display: none; }
+.run-group > summary:hover { background: #edf4ef; }
+.run-group[open] > summary > .icon { transform: rotate(90deg); }
+.run-heading { min-width: 0; }
+.run-heading strong { display: block; font-size: 13px; font-weight: 600; overflow-wrap: anywhere; }
+.run-meta { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; overflow-wrap: anywhere; }
+.run-failed > summary .run-meta { color: var(--red); }
+.run-count { margin-left: auto; flex: 0 0 auto; font-size: 12px; text-align: right; font-variant-numeric: tabular-nums; }
+.run-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 4px; padding: 7px 0; }
+.run-pagination > span { margin-right: auto; color: var(--muted); font-size: 11px; }
+.run-empty { padding: 10px 8px 20px; margin: 0; color: var(--muted); font-size: 12px; }
 .mobile-change-date { display: none; }
 .changes-footer { border-top: 1px solid var(--line); display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-top: 12px; color: var(--muted); font-size: 12px; flex-wrap: wrap; }
 .pagination { display: flex; align-items: center; gap: 4px; }

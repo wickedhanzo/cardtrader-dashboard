@@ -18,8 +18,9 @@
     client: null, prices: null, settings: D.emptySettings(), selected: null, visible: [],
     filters: { search: "", expansion: "", ownership: "all", watched: false, sort: "name" },
     drafts: new Map(), busy: false, loading: false, session: 0, pendingClient: null, connecting: false,
-    view: window.location.hash === "#/changes" ? "changes" : "collection", changes: [],
-    changeFilters: { search: "", expansion: "", direction: "all" }, changesPage: 1
+    view: window.location.hash === "#/changes" ? "changes" : "collection", runs: [],
+    changeFilters: { search: "", expansion: "", direction: "all" }, changesPage: 1,
+    expandedRuns: new Set(), runPages: new Map()
   };
   let imageSourceKey = null;
   let focusCardOnNavigation = false;
@@ -393,10 +394,89 @@
   }
 
   function renderPriceChanges() {
-    const filtered = D.filterPriceChanges(state.changes, state.changeFilters);
+    const filtered = D.filterCheckRuns(state.runs, state.changeFilters);
     const page = D.paginatePriceChanges(filtered, state.changesPage);
     state.changesPage = page.page;
     const fragment = document.createDocumentFragment();
+    for (const run of page.items) {
+      const group = document.createElement("details");
+      group.className = "run-group";
+      group.classList.toggle("run-failed", run.succeeded === false);
+      group.dataset.runId = run.id;
+      group.dataset.startedAt = run.at;
+      const summary = document.createElement("summary");
+      const heading = document.createElement("span");
+      heading.className = "run-heading";
+      const title = document.createElement("strong");
+      title.textContent = run.legacy ? "Earlier history" : changeDates.format(new Date(run.startedAt));
+      const metadata = document.createElement("span");
+      metadata.className = "run-meta";
+      metadata.textContent = run.legacy ? "Before run tracking" :
+        `${run.checkedCards.toLocaleString()} checked / ${run.newCards.toLocaleString()} new / ${run.succeeded ? "Complete" : "With errors"}`;
+      heading.append(title, metadata);
+      const count = document.createElement("span");
+      count.className = "run-count";
+      count.textContent = `${run.totalChanges.toLocaleString()} price ${run.totalChanges === 1 ? "update" : "updates"}`;
+      if (run.changes.length !== run.totalChanges) {
+        const matching = document.createElement("span");
+        matching.className = "run-meta";
+        matching.textContent = `${run.changes.length.toLocaleString()} matching`;
+        count.append(matching);
+      }
+      summary.append(icon("chevron-right"), heading, count);
+      const contents = document.createElement("div");
+      contents.className = "run-content";
+      group.append(summary, contents);
+      group.open = state.expandedRuns.has(run.id);
+      if (group.open) renderRunContents(contents, run);
+      group.addEventListener("toggle", () => {
+        if (group.open) { state.expandedRuns.add(run.id); renderRunContents(contents, run); }
+        else { state.expandedRuns.delete(run.id); contents.replaceChildren(); }
+      });
+      fragment.append(group);
+    }
+    $("changes-body").replaceChildren(fragment);
+    const actual = filtered.filter(run => !run.legacy).length;
+    const totalChanges = filtered.reduce((sum, run) => sum + run.changes.length, 0);
+    $("changes-count").textContent = `${actual.toLocaleString()} ${actual === 1 ? "run" : "runs"} / ${totalChanges.toLocaleString()} price updates`;
+    $("changes-range").textContent = `${(page.total ? page.start + 1 : 0).toLocaleString()}-${page.end.toLocaleString()} of ${page.total.toLocaleString()} groups`;
+    $("changes-page").value = page.page;
+    $("changes-page").max = page.totalPages;
+    $("changes-total-pages").textContent = `of ${page.totalPages.toLocaleString()}`;
+    const disabled = !state.client || state.loading || state.connecting || page.total === 0;
+    $("changes-page").disabled = disabled;
+    $("changes-first").disabled = disabled || page.page === 1;
+    $("changes-previous").disabled = disabled || page.page === 1;
+    $("changes-next").disabled = disabled || page.page === page.totalPages;
+    $("changes-last").disabled = disabled || page.page === page.totalPages;
+    $("clear-changes-search").hidden = !state.changeFilters.search;
+    $("changes-empty").hidden = page.total > 0;
+    $("changes-empty-title").textContent = !state.client ? "No repository connected" : state.runs.length ? "No matching changes" : "No checks recorded yet";
+    $("changes-empty-action").textContent = !state.client ? "Connect repository" : state.runs.length ? "Clear filters" : "Refresh";
+    $("changes-empty-action").disabled = state.loading || state.connecting;
+  }
+
+  function renderRunContents(container, run) {
+    const page = D.paginatePriceChanges(run.changes, state.runPages.get(run.id) || 1);
+    state.runPages.set(run.id, page.page);
+    if (!page.total) {
+      const empty = document.createElement("p");
+      empty.className = "run-empty";
+      empty.textContent = "No price updates in this run.";
+      container.replaceChildren(empty);
+      return;
+    }
+    const scroll = document.createElement("div");
+    scroll.className = "table-scroll";
+    const table = document.createElement("table");
+    table.className = "run-changes-table";
+    const head = document.createElement("thead"), headRow = document.createElement("tr");
+    for (const [label, className] of [["Changed", "changed-date"], ["Card", ""], ["Before", "numeric previous-price"], ["After", "numeric"], ["Change", "numeric"]]) {
+      const cell = document.createElement("th");
+      cell.scope = "col"; cell.className = className; cell.textContent = label; headRow.append(cell);
+    }
+    head.append(headRow);
+    const body = document.createElement("tbody");
     for (const change of page.items) {
       const row = document.createElement("tr");
       row.className = "card-row";
@@ -439,25 +519,30 @@
       percentage.title = signedPercent(change.percent);
       amount.append(percentage);
       row.append(dateCell, cardCell, before, after, amount);
-      fragment.append(row);
+      body.append(row);
     }
-    $("changes-body").replaceChildren(fragment);
-    $("changes-count").textContent = `${page.total.toLocaleString()} ${page.total === 1 ? "change" : "changes"}`;
-    $("changes-range").textContent = `${(page.total ? page.start + 1 : 0).toLocaleString()}-${page.end.toLocaleString()} of ${page.total.toLocaleString()}`;
-    $("changes-page").value = page.page;
-    $("changes-page").max = page.totalPages;
-    $("changes-total-pages").textContent = `of ${page.totalPages.toLocaleString()}`;
-    const disabled = !state.client || state.loading || state.connecting || page.total === 0;
-    $("changes-page").disabled = disabled;
-    $("changes-first").disabled = disabled || page.page === 1;
-    $("changes-previous").disabled = disabled || page.page === 1;
-    $("changes-next").disabled = disabled || page.page === page.totalPages;
-    $("changes-last").disabled = disabled || page.page === page.totalPages;
-    $("clear-changes-search").hidden = !state.changeFilters.search;
-    $("changes-empty").hidden = page.total > 0;
-    $("changes-empty-title").textContent = !state.client ? "No repository connected" : state.changes.length ? "No matching changes" : "No price changes yet";
-    $("changes-empty-action").textContent = !state.client ? "Connect repository" : state.changes.length ? "Clear filters" : "Refresh";
-    $("changes-empty-action").disabled = state.loading || state.connecting;
+    table.append(head, body); scroll.append(table);
+    const footer = document.createElement("div");
+    footer.className = "run-pagination";
+    const range = document.createElement("span");
+    range.textContent = `${page.start + 1}-${page.end} of ${page.total.toLocaleString()} price ${page.total === 1 ? "update" : "updates"}`;
+    footer.append(range);
+    if (page.totalPages > 1) {
+      for (const [label, image, offset] of [["Previous changes", "chevron-left", -1], ["Next changes", "chevron-right", 1]]) {
+        const button = document.createElement("button");
+        button.type = "button"; button.className = "icon-button"; button.title = label; button.setAttribute("aria-label", label);
+        button.disabled = offset < 0 ? page.page === 1 : page.page === page.totalPages;
+        button.append(icon(image));
+        button.addEventListener("click", () => {
+          state.runPages.set(run.id, page.page + offset);
+          renderRunContents(container, run);
+          container.querySelector(`button[aria-label="${label}"]:not(:disabled)`)?.focus({ preventScroll: true });
+          container.querySelector(".table-scroll").scrollTop = 0;
+        });
+        footer.append(button);
+      }
+    }
+    container.replaceChildren(scroll, footer);
   }
 
   function resetCollectionFilters(overrides = {}) {
@@ -479,7 +564,7 @@
   function showSnapshot(snapshot) {
     state.prices = snapshot.prices;
     state.settings = snapshot.settings;
-    state.changes = D.priceChanges(snapshot.prices);
+    state.runs = D.checkRuns(snapshot.prices);
     $("repository-label").textContent = `${state.client.config.owner}/${state.client.config.repo} / ${state.client.config.branch}`;
     $("last-checked").textContent = snapshot.prices.lastCheckedAt ? `Checked ${formatDate(snapshot.prices.lastCheckedAt)}` : "Never / partial snapshot";
     renderExpansions();
@@ -615,7 +700,9 @@
     state.client?.disconnect();
     state.client = null;
     state.prices = null;
-    state.changes = [];
+    state.runs = [];
+    state.expandedRuns.clear();
+    state.runPages.clear();
     state.changesPage = 1;
     state.settings = D.emptySettings();
     state.selected = null;
@@ -647,7 +734,7 @@
     resetCollectionFilters();
     render();
   });
-  function filterChanges() { state.changesPage = 1; renderPriceChanges(); }
+  function filterChanges() { state.changesPage = 1; state.runPages.clear(); renderPriceChanges(); }
   $("changes-search").addEventListener("input", event => { state.changeFilters.search = event.target.value; filterChanges(); });
   $("clear-changes-search").addEventListener("click", () => { $("changes-search").value = ""; state.changeFilters.search = ""; filterChanges(); $("changes-search").focus(); });
   $("changes-expansion").addEventListener("change", event => { state.changeFilters.expansion = event.target.value; filterChanges(); });
@@ -666,14 +753,14 @@
     const table = $("changes-table").parentElement;
     table.scrollTop = 0;
     table.scrollIntoView({ block: "nearest", behavior: "instant" });
-    $("changes-body").querySelector("button")?.focus({ preventScroll: true });
+    $("changes-body").querySelector("summary")?.focus({ preventScroll: true });
   }
   function jumpChangePage() { changePage(Number($("changes-page").value)); }
   $("changes-page").addEventListener("change", jumpChangePage);
   $("changes-page").addEventListener("keydown", event => { if (event.key === "Enter") { event.preventDefault(); jumpChangePage(); } });
   $("changes-empty-action").addEventListener("click", () => {
     if (!state.client) return openConnect();
-    if (!state.changes.length) return refresh();
+    if (!state.runs.length) return refresh();
     state.changeFilters = { search: "", expansion: "", direction: "all" };
     $("changes-search").value = ""; $("changes-expansion").value = "";
     document.querySelectorAll("[data-direction]").forEach(button => button.setAttribute("aria-pressed", String(button.dataset.direction === "all")));

@@ -1,8 +1,8 @@
 # CardTrader dashboard
 
-Public browser UI for a private CardTraderActions repository. This repository contains only static UI assets and a GitHub Pages workflow. Price history, acquired status, watches, and API secrets belong in the separate private checker repository.
+Public browser UI for a private CardTraderActions repository. This repository contains only static UI assets, a GitHub Pages workflow, and an asset-versioning helper. Price history, acquired status, watches, and API secrets belong in the separate private checker repository.
 
-The Collection view includes search, acquired flags, price watches, exact-printing artwork, and 24-hour euro/percentage changes. The Price changes view shows retained changes newest first, 100 per page, with search, expansion, and direction filters. Both views share the same connection.
+The Collection view includes search, acquired flags, price watches, exact-printing artwork/links, and 24-hour euro/percentage changes. The Price changes view groups checks newest first, including zero-update runs, with checked/new/update totals and expandable change lists. Runs and their changes use 100-entry pages with search, expansion, and direction filters. Older records stay under Earlier history. Both views share the same connection. Deployments give JavaScript/CSS content-versioned URLs so cached assets cannot leave new controls inert.
 
 1. Push this folder to a new public GitHub repository with `main` as the default branch.
 2. Under **Settings > Pages > Build and deployment**, choose **GitHub Actions**.

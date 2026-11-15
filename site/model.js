@@ -39,6 +39,20 @@
       }
       seen.add(card.id);
     }
+    const runIds = new Set();
+    if (value.runs !== undefined) {
+      if (!Array.isArray(value.runs)) throw new Error("prices.json contains invalid checker runs.");
+      for (const run of value.runs) {
+        if (!object(run) || typeof run.id !== "string" || !run.id.trim() || runIds.has(run.id) ||
+            !date(run.startedAt) || !date(run.completedAt) || Date.parse(run.completedAt) < Date.parse(run.startedAt) ||
+            typeof run.succeeded !== "boolean" || !cents(run.checkedCards) || !cents(run.newCards) || run.newCards > run.checkedCards ||
+            !Array.isArray(run.changes) || run.changes.length > run.checkedCards - run.newCards ||
+            run.changes.some(change => !object(change) || !seen.has(change.cardId) || !cents(change.beforeCents) || !cents(change.afterCents) || change.beforeCents === change.afterCents) ||
+            new Set(run.changes.map(change => change.cardId)).size !== run.changes.length)
+          throw new Error("prices.json contains invalid checker runs.");
+        runIds.add(run.id);
+      }
+    }
     return value;
   }
 
@@ -118,6 +132,32 @@
       const text = [card.name, card.expansion, card.collectorNumber, String(card.blueprintId)].join("\n").toLocaleLowerCase();
       return (!query || text.includes(query)) && (!filters.expansion || String(card.expansionId) === filters.expansion) &&
         (filters.direction !== "drops" || change.changeCents < 0) && (filters.direction !== "increases" || change.changeCents > 0);
+    });
+  }
+
+  function checkRuns(prices) {
+    const cards = new Map(prices.cards.map(card => [card.id, card]));
+    const runs = (prices.runs || []).map(run => ({
+      ...run, at: run.startedAt, timestamp: Date.parse(run.startedAt), totalChanges: run.changes.length, legacy: false,
+      changes: run.changes.map(change => ({
+        id: `${run.id}:${change.cardId}`, card: cards.get(change.cardId), at: run.startedAt,
+        timestamp: Date.parse(run.startedAt), beforeCents: change.beforeCents, afterCents: change.afterCents,
+        changeCents: change.afterCents - change.beforeCents,
+        percent: change.beforeCents > 0 ? (change.afterCents - change.beforeCents) / change.beforeCents * 100 : null
+      }))
+    }));
+    const earliest = runs.length ? Math.min(...runs.map(run => run.timestamp)) : Infinity;
+    const earlier = priceChanges(prices).filter(change => change.timestamp < earliest);
+    if (earlier.length) runs.push({ id: 'earlier-history', legacy: true, at: earlier[0].at,
+      timestamp: earlier[0].timestamp, totalChanges: earlier.length, changes: earlier });
+    return runs.sort((a, b) => b.timestamp - a.timestamp || a.id.localeCompare(b.id));
+  }
+
+  function filterCheckRuns(runs, filters) {
+    const active = Boolean((filters.search || "").trim() || filters.expansion || (filters.direction && filters.direction !== "all"));
+    return runs.flatMap(run => {
+      const changes = filterPriceChanges(run.changes, filters);
+      return active && !changes.length ? [] : [{ ...run, changes }];
     });
   }
 
@@ -311,7 +351,7 @@
     return [...new Set(sources)];
   }
 
-  const api = { DEFAULT_BRANCH, emptySettings, validateSettings, validatePrices, setting, change24h, filterCards, priceChanges, filterPriceChanges, paginatePriceChanges, parseTarget,
+  const api = { DEFAULT_BRANCH, emptySettings, validateSettings, validatePrices, setting, change24h, filterCards, priceChanges, filterPriceChanges, checkRuns, filterCheckRuns, paginatePriceChanges, parseTarget,
     validateConnection, createConnectionStore, encodeContent, decodeContent, createClient, imageSources };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.CardTraderData = Object.freeze(api);
