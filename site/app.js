@@ -59,6 +59,28 @@
     return element;
   }
 
+  function initializeFoilArt(art) {
+    let frame = 0, pointer = null;
+    art.addEventListener("pointermove", event => {
+      if (event.pointerType === "touch" || art.dataset.finish === "normal" || art.dataset.loaded !== "true" ||
+          window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+      pointer = { x: event.clientX, y: event.clientY };
+      if (frame) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        if (!art.isConnected) return;
+        const bounds = art.getBoundingClientRect();
+        if (!bounds.width || !bounds.height) return;
+        art.style.setProperty("--foil-x", `${Math.max(0, Math.min(100, (pointer.x - bounds.x) / bounds.width * 100))}%`);
+        art.style.setProperty("--foil-y", `${Math.max(0, Math.min(100, (pointer.y - bounds.y) / bounds.height * 100))}%`);
+      });
+    });
+    art.addEventListener("pointerleave", () => {
+      cancelAnimationFrame(frame); frame = 0;
+      art.style.removeProperty("--foil-x"); art.style.removeProperty("--foil-y");
+    });
+  }
+
   function languageFlag(card) {
     const language = D.cardLanguageInfo(card);
     const image = document.createElement("img");
@@ -259,7 +281,7 @@
       title.addEventListener("click", () => selectCard(card.id, true));
       const metadata = document.createElement("span");
       metadata.className = "card-meta";
-      metadata.textContent = `${card.expansion} / #${card.collectorNumber}${card.isFoil ? " / Foil" : ""}`;
+      metadata.textContent = `${card.expansion} / #${card.collectorNumber}${card.isFoil ? ` / ${D.cardFinish(card).label}` : ""}`;
       metadata.append(" ", languageFlag(card));
       titleCell.append(title, metadata);
       const price = document.createElement("td");
@@ -403,6 +425,8 @@
   }
 
   function renderImage(card) {
+    const art = $("card-finish-art");
+    art.dataset.finish = D.cardFinish(card).code;
     const sources = D.imageSources(card);
     const sourceKey = `${card.id}\n${sources.join("\n")}`;
     if (imageSourceKey === sourceKey) return;
@@ -411,13 +435,17 @@
     image.loading = "eager";
     let index = 0;
     image.hidden = true;
+    art.hidden = true;
+    art.dataset.loaded = "false";
     $("image-unavailable").hidden = false;
-    image.alt = `${card.name} card image`;
-    image.onload = () => { if (imageSourceKey === sourceKey) { image.hidden = false; $("image-unavailable").hidden = true; } };
+    image.alt = `${card.name}, ${D.cardFinish(card).label} card image`;
+    image.onload = () => { if (imageSourceKey === sourceKey) {
+      image.hidden = false; art.hidden = false; art.dataset.loaded = "true"; $("image-unavailable").hidden = true;
+    } };
     image.onerror = () => {
       if (imageSourceKey !== sourceKey) return;
       if (++index < sources.length) image.src = sources[index];
-      else { image.hidden = true; $("image-unavailable").hidden = false; }
+      else { image.hidden = true; art.hidden = true; art.dataset.loaded = "false"; $("image-unavailable").hidden = false; }
     };
     if (sources.length) image.src = sources[0];
     else image.removeAttribute("src");
@@ -630,6 +658,9 @@
       $("condition-prices").replaceChildren();
       $("history-body").replaceChildren();
       $("card-image").removeAttribute("src");
+      $("card-finish-art").hidden = true;
+      $("card-finish-art").dataset.loaded = "false";
+      $("card-finish-art").dataset.finish = "normal";
       $("cardtrader-link").removeAttribute("href");
       $("detail-language").replaceChildren();
       $("cardmarket-references").replaceChildren();
@@ -640,7 +671,8 @@
     $("detail-name").textContent = card.name;
     $("detail-expansion").textContent = `${card.expansion} / #${card.collectorNumber}`;
     $("detail-rarity").textContent = card.rarity || "Unknown rarity";
-    $("detail-finish").textContent = card.isFoil ? "Foil" : "Normal";
+    $("detail-finish").textContent = D.cardFinish(card).label;
+    $("detail-finish").dataset.finish = D.cardFinish(card).code;
     $("detail-blueprint").textContent = `ID ${card.blueprintId}`;
     $("detail-language").replaceChildren(languageFlag(card), document.createTextNode(`CardTrader: ${D.cardLanguageInfo(card).name}`));
     $("cardtrader-link").href = `https://www.cardtrader.com/en/cards/${card.blueprintId}`;
@@ -720,27 +752,31 @@
         pocket.className = "binder-pocket";
         if (card) {
           const acquired = D.setting(state.settings, card.id).acquired;
+          const finishInfo = D.cardFinish(card);
           pocket.classList.toggle("is-missing", !acquired);
           pocket.dataset.cardId = card.id;
           const button = document.createElement("button");
           button.type = "button";
           button.className = "binder-card";
-          button.title = `${card.name} / #${card.collectorNumber} / ${card.isFoil ? "Foil" : "Normal"} / ${acquired ? "Acquired" : "Missing"}`;
+          button.title = `${card.name} / #${card.collectorNumber} / ${finishInfo.label} / ${acquired ? "Acquired" : "Missing"}`;
           button.setAttribute("aria-label", button.title);
           button.addEventListener("click", () => openChangedCard(card));
           const art = document.createElement("span");
-          art.className = "binder-art";
+          art.className = "binder-art foil-art";
+          art.dataset.finish = finishInfo.code;
+          art.dataset.loaded = "false";
+          if (card.isFoil) initializeFoilArt(art);
           const placeholder = document.createElement("span");
           placeholder.className = "binder-image-placeholder";
           placeholder.append(icon("image"));
           const image = document.createElement("img");
           image.className = "binder-image";
-          image.alt = `${card.name} card image`;
+          image.alt = `${card.name}, ${finishInfo.label} card image`;
           image.loading = "lazy";
           image.decoding = "async";
           image.referrerPolicy = "no-referrer";
-          image.onload = () => { image.hidden = false; placeholder.hidden = true; };
-          image.onerror = () => { image.hidden = true; placeholder.hidden = false; };
+          image.onload = () => { image.hidden = false; placeholder.hidden = true; art.dataset.loaded = "true"; };
+          image.onerror = () => { image.hidden = true; placeholder.hidden = false; art.dataset.loaded = "false"; };
           const source = D.imageSources(card)[0];
           if (source) image.src = source;
           else image.hidden = true;
@@ -756,7 +792,10 @@
           collector.title = `Collector number ${card.collectorNumber}`;
           collector.append(" ", languageFlag(card));
           const finish = document.createElement("span");
-          finish.textContent = card.isFoil ? "Foil" : "Normal";
+          finish.className = "finish-label";
+          finish.textContent = finishInfo.shortLabel;
+          finish.title = finishInfo.label;
+          finish.dataset.finish = finishInfo.code;
           const checkbox = document.createElement("input");
           checkbox.type = "checkbox";
           checkbox.checked = acquired;
@@ -915,7 +954,7 @@
       name.addEventListener("click", () => openChangedCard(change.card));
       const metadata = document.createElement("span");
       metadata.className = "card-meta";
-      metadata.textContent = `${change.card.expansion} / #${change.card.collectorNumber}${change.card.isFoil ? " / Foil" : ""}`;
+      metadata.textContent = `${change.card.expansion} / #${change.card.collectorNumber}${change.card.isFoil ? ` / ${D.cardFinish(change.card).label}` : ""}`;
       const mobileTime = time.cloneNode(true);
       mobileTime.className = "mobile-change-date card-meta";
       const acquired = D.setting(state.settings, change.card.id).acquired;
@@ -1296,6 +1335,7 @@
   });
   if (typeof ResizeObserver !== "undefined") new ResizeObserver(drawChart).observe($("history-chart"));
   else window.addEventListener("resize", drawChart);
+  initializeFoilArt($("card-finish-art"));
   initializeGradeColumns();
   render();
   const remembered = connectionStore.read();

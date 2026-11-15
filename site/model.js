@@ -26,6 +26,16 @@
     en: Object.freeze({ name: "English", flag: "flags/us.svg", cardmarket: "1" }),
     ja: Object.freeze({ name: "Japanese", flag: "flags/jp.svg", cardmarket: "7" })
   });
+  const FINISHES = Object.freeze(Object.fromEntries([
+    ["normal", "Normal", "Normal"], ["foil", "Foil", "Foil"],
+    ["surge-foil", "Surge foil", "Surge foil"], ["chocobo-track", "Chocobo track foil", "Chocobo track"]
+  ].map(([code, label, shortLabel]) => [code, Object.freeze({ code, label, shortLabel })])));
+  // Exact Holiday Release printings; the adjacent Birds of Paradise promo is traditional foil.
+  const CHOCOBO_TRACK_BLUEPRINTS = new Set([
+    352456, 352457, 352458, 352459, 352460, 352461, 352462, 352463, 352464,
+    352465, 352466, 352467, 352468, 352469, 352470, 352471, 352472,
+    352474, 352475, 352476, 352477, 352478, 352479, 352480, 352481
+  ]);
   const emptySettings = () => ({ schemaVersion: 1, cards: {} });
   const validConditionWatches = watches => object(watches) && Object.entries(watches).every(([code, amount]) =>
     secondaryCondition(code) && (amount === null || targetCents(amount)));
@@ -101,6 +111,22 @@
   function cardLanguage(card) {
     const language = card?.language === undefined ? "en" : card.language;
     return language === "en" || language === "ja" ? language : null;
+  }
+
+  function cardFinish(card) {
+    if (card?.isFoil !== true) return FINISHES.normal;
+    if (CHOCOBO_TRACK_BLUEPRINTS.has(card.blueprintId)) return FINISHES["chocobo-track"];
+    try {
+      const url = new URL(card.imageUrl);
+      const blueprint = /^\/uploads\/blueprints\/image\/(\d+)\//.exec(url.pathname);
+      if (url.protocol === "https:" && ["cardtrader.com", "www.cardtrader.com"].includes(url.hostname) &&
+          blueprint && Number(blueprint[1]) === card.blueprintId) {
+        const filename = decodeURIComponent(url.pathname.split("/").pop()).toLowerCase();
+        if (/(?:^|-)chocobo-track(?:-foil)?(?:-|\.)/.test(filename)) return FINISHES["chocobo-track"];
+        if (/(?:^|-)surge-foil(?:-|\.)/.test(filename)) return FINISHES["surge-foil"];
+      }
+    } catch (_) { /* Legacy cards can have no image metadata. */ }
+    return FINISHES.foil;
   }
 
   function cardLanguageInfo(card) {
@@ -205,7 +231,7 @@
     const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
     const result = prices.cards.filter(card => {
       const saved = setting(settings, card.id);
-      const haystack = [card.name, card.expansion, card.collectorNumber, String(card.blueprintId)].join("\n").toLocaleLowerCase();
+      const haystack = [card.name, card.expansion, card.collectorNumber, String(card.blueprintId), cardFinish(card).label].join("\n").toLocaleLowerCase();
       return (!query || haystack.includes(query)) && (!filters.expansion || String(card.expansionId) === filters.expansion) &&
         (filters.ownership !== "acquired" || saved.acquired) && (filters.ownership !== "missing" || !saved.acquired) &&
         (!filters.watched || watchTargets(settings, card.id).length > 0) &&
@@ -260,7 +286,7 @@
 
   function binderPage(prices, settings, filters, requestedPage) {
     const scoped = (prices?.cards || []).filter(card => String(card.expansionId) === filters.expansion &&
-      (!filters.finish || filters.finish === "all" || card.isFoil === (filters.finish === "foil")));
+      (!filters.finish || filters.finish === "all" || filters.finish === "foil" && card.isFoil || cardFinish(card).code === filters.finish));
     const cards = filterCards({ cards: scoped, lastCheckedAt: prices?.lastCheckedAt }, settings,
       { search: filters.search, ownership: filters.ownership, sort: "collector-number" });
     const totalPages = Math.max(1, Math.ceil(cards.length / 18));
@@ -276,7 +302,7 @@
     return changes.filter(change => {
       const card = change.card;
       const acquired = setting(settings, card.id).acquired;
-      const text = [card.name, card.expansion, card.collectorNumber, String(card.blueprintId)].join("\n").toLocaleLowerCase();
+      const text = [card.name, card.expansion, card.collectorNumber, String(card.blueprintId), cardFinish(card).label].join("\n").toLocaleLowerCase();
       return (!query || text.includes(query)) && (!filters.expansion || String(card.expansionId) === filters.expansion) &&
         (filters.direction !== "drops" || change.changeCents < 0) && (filters.direction !== "increases" || change.changeCents > 0) &&
         (filters.ownership !== "acquired" || acquired) && (filters.ownership !== "missing" || !acquired);
@@ -518,7 +544,7 @@
     return [...new Set(sources)];
   }
 
-  const api = { DEFAULT_BRANCH, CONDITIONS, emptySettings, validateSettings, validatePrices, cardLanguage, cardLanguageInfo,
+  const api = { DEFAULT_BRANCH, CONDITIONS, emptySettings, validateSettings, validatePrices, cardLanguage, cardLanguageInfo, cardFinish,
     cardmarketUrl, cardmarketReferences, cardmarketSortValue, createColumnStore, setting, watchThreshold, watchTargets,
     conditionPrice, conditionSeries, change24h, filterCards, binderPage, priceChanges, filterPriceChanges, sortPriceChanges, checkRuns, filterCheckRuns, paginatePriceChanges, parseTarget,
     validateConnection, createConnectionStore, encodeContent, decodeContent, createClient, imageSources };
